@@ -1,0 +1,10 @@
+streamlit
+ifcopenshell
+matplotlib
+plotly
+pandas
+xlsxwriter
+
+pip install fpdf2
+pip install reportlab
+pip install --upgrade kaleido
