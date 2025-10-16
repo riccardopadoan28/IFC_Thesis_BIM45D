@@ -260,7 +260,7 @@ def render_ifc4x3_settings():
         )
 
     # Pulsante per collegamento al tab delle Export Rules
-    st.text("🗂️ Entities to Export - Use the Export Rule creator in the Sidebar and scroll down to manage export rules.")
+    st.markdown("### 🗂️ Entities to Export - Use the Export Rule creator in the Sidebar and scroll down to manage export rules.")
 
 
 # ─────────────────────────────────────────────

@@ -5,13 +5,13 @@ st.set_page_config(page_title="Home", page_icon="🏠", layout="wide")
 
 # --- SIDEBAR (rimane visibile in tutte le pagine) ---
 st.sidebar.title("Navigation")
-st.sidebar.write("Use the menu below to explore the app pages.")
+st.sidebar.write("Use the menu above to explore the app pages.")
 
 # --- CONTENUTO DELLA PAGINA HOME ---
 
 # Titolo principale
 st.title("BIM45D - IFC Structural Data Management Application")
-st.text("OpenBIM platform to help you create, manage, and export Industry Foundation Classes data for your BIM 4D and 5D workflows. You can configure custom rules, inspect models, and generate IFC files directly through an intuitive interface.")
+st.markdown("OpenBIM platform to help you create, manage, and export Industry Foundation Classes data for your BIM 4D and 5D workflows. You can configure custom rules, inspect models, and generate IFC files directly through an intuitive interface.")
 
 st.markdown("""
 ---
