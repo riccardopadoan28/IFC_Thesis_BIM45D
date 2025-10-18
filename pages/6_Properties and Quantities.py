@@ -220,7 +220,7 @@ def execute():
 
             if "DataFrame" in session and session["DataFrame"] is not None and not session["DataFrame"].empty:
                 # 🔹 Visualizzazione dinamica
-                st.dataframe(session["DataFrame"], width="stretch")   # instead of use_container_width=True
+                st.dataframe(session["DataFrame"], use_container_width=True)
                 # 🔹 Pulsante download CSV
                 st.download_button(
                     "Download CSV",
@@ -257,19 +257,28 @@ def execute():
                 # 🔹 Filtri con opzione "All"
                 col1, col2, col3 = st.columns(3)
 
+                # Order: Level -> Class -> Type
                 with col1:
-                    class_filter = st.selectbox("Filter by Class", ["All"] + sorted(df["Class"].dropna().unique().tolist()))
+                    level_options = ["All"] + (sorted(df["Level"].dropna().unique().tolist()) if "Level" in df else [])
+                    level_filter = st.selectbox("Filter by Level", level_options, key="props_level_filter")
                 with col2:
-                    level_filter = st.selectbox("Filter by Level", ["All"] + sorted(df["Level"].dropna().unique().tolist()))
+                    class_options = ["All"] + (sorted(df["Class"].dropna().unique().tolist()) if "Class" in df else [])
+                    class_filter = st.selectbox("Filter by Class", class_options, key="props_class_filter")
                 with col3:
-                    type_filter = st.selectbox("Filter by Type", ["All"] + sorted(df["Type"].dropna().unique().tolist()))
+                    # Type options depend on selected class when not All
+                    if class_filter != "All" and "Class" in df:
+                        type_opts = sorted(df[df["Class"] == class_filter]["Type"].dropna().unique().tolist())
+                    else:
+                        type_opts = sorted(df["Type"].dropna().unique().tolist()) if "Type" in df else []
+                    type_options = ["All"] + type_opts
+                    type_filter = st.selectbox("Filter by Type", type_options, key="props_type_filter")
 
-                # 🔹 Applica filtri solo se diverso da "All"
+                # 🔹 Applica filtri solo se diverso da "All" (apply Level, then Class, then Type)
                 df_filtered = df.copy()
-                if class_filter != "All":
-                    df_filtered = df_filtered[df_filtered["Class"] == class_filter]
                 if level_filter != "All":
                     df_filtered = df_filtered[df_filtered["Level"] == level_filter]
+                if class_filter != "All":
+                    df_filtered = df_filtered[df_filtered["Class"] == class_filter]
                 if type_filter != "All":
                     df_filtered = df_filtered[df_filtered["Type"] == type_filter]
 
@@ -278,46 +287,55 @@ def execute():
                     st.warning("⚠️ No data available with the selected filters.")
                 else:
                     # 🔹 Scelta della proprietà da analizzare
-                    property_name = st.selectbox("Select property/column", sorted(df_filtered.columns))
+                    # If a specific class is selected, limit properties to columns present for that class
+                    if class_filter != "All" and "Class" in df:
+                        prop_options = sorted(df[df["Class"] == class_filter].columns.tolist())
+                    else:
+                        prop_options = sorted(df_filtered.columns.tolist())
 
-                    if property_name:
-                        # Conta frequenze
-                        df_report = df_filtered[property_name].value_counts(dropna=False).reset_index()
-                        df_report.columns = [property_name, "Count"]
+                    if not prop_options:
+                        st.info("No properties available for the selected class/filters.")
+                    else:
+                        property_name = st.selectbox("Select property", prop_options, key="props_property_select")
 
-                        st.markdown("Class distribution")
-                        st.dataframe(df_report, use_container_width=True)
+                        if property_name:
+                            # Conta frequenze
+                            df_report = df_filtered[property_name].value_counts(dropna=False).reset_index()
+                            df_report.columns = [property_name, "Count"]
 
-                        # 🔹 Pulisci il dataframe filtrato
-                        df_display = df_filtered.copy()
+                            st.markdown("Class distribution")
+                            st.dataframe(df_report, use_container_width=True)
 
-                        # Rimuovi colonne completamente vuote
-                        df_display = df_display.dropna(axis=1, how="all")
+                            # 🔹 Pulisci il dataframe filtrato
+                            df_display = df_filtered.copy()
 
-                        # Seleziona solo colonne di tipo stringa o booleane
-                        df_display = df_display.select_dtypes(include=["object", "bool"])
+                            # Rimuovi colonne completamente vuote
+                            df_display = df_display.dropna(axis=1, how="all")
 
-                        # Se resta qualcosa da mostrare
-                        if not df_display.empty:
-                            st.markdown("Filtered data")
-                            st.dataframe(df_display, width="stretch")
-                        else:
-                            st.info("ℹ️ No descriptive properties available for the selected filters.")
+                            # Seleziona solo colonne di tipo stringa o booleane
+                            df_display = df_display.select_dtypes(include=["object", "bool"])
 
-                        # 🔹 Grafico interattivo
-                        fig = px.bar(
-                            df_report,
-                            x=property_name,
-                            y="Count",
-                            title=f"Distribution of {property_name}",
-                            text="Count"
-                        )
-                        fig.update_traces(textposition="outside")
-                        st.plotly_chart(fig, width="content")  # instead of use_container_width=False
+                            # Se resta qualcosa da mostrare
+                            if not df_display.empty:
+                                st.markdown("Filtered data")
+                                st.dataframe(df_display, use_container_width=True)
+                            else:
+                                st.info("ℹ️ No descriptive properties available for the selected filters.")
 
-                        # 🔹 Salvo i risultati in sessione per export/report
-                        session["report_data"] = df_report
-                        session["report_fig"] = fig
+                            # 🔹 Grafico interattivo
+                            fig = px.bar(
+                                df_report,
+                                x=property_name,
+                                y="Count",
+                                title=f"Distribution of {property_name}",
+                                text="Count"
+                            )
+                            fig.update_traces(textposition="outside")
+                            st.plotly_chart(fig, use_container_width=True)
+
+                            # 🔹 Salvo i risultati in sessione per export/report
+                            session["report_data"] = df_report
+                            session["report_fig"] = fig
             else:
                 st.warning("⚠️ No data available. Please load an IFC file first.")
 
@@ -341,28 +359,27 @@ def execute():
                         # FILTRI DINAMICI
                         # ------------------------------
                         col1, col2, col3 = st.columns(3)
+                        # Order: Level -> Class -> Type (Type depends on Class)
                         with col1:
-                            class_filter = st.selectbox(
-                                "Filter by Class", ["All"] + sorted(qto_df["Class"].dropna().unique().tolist())
-                                if "Class" in qto_df else ["All"]
-                            )
+                            level_options = ["All"] + (sorted(qto_df["Level"].dropna().unique().tolist()) if "Level" in qto_df else [])
+                            level_filter = st.selectbox("Filter by Level", level_options, key="qto_level_filter")
                         with col2:
-                            level_filter = st.selectbox(
-                                "Filter by Level", ["All"] + sorted(qto_df["Level"].dropna().unique().tolist())
-                                if "Level" in qto_df else ["All"]
-                            )
+                            class_options = ["All"] + (sorted(qto_df["Class"].dropna().unique().tolist()) if "Class" in qto_df else [])
+                            class_filter = st.selectbox("Filter by Class", class_options, key="qto_class_filter")
                         with col3:
-                            type_filter = st.selectbox(
-                                "Filter by Type", ["All"] + sorted(qto_df["Type"].dropna().unique().tolist())
-                                if "Type" in qto_df else ["All"]
-                            )
+                            if class_filter != "All" and "Class" in qto_df:
+                                type_opts = sorted(qto_df[qto_df["Class"] == class_filter]["Type"].dropna().unique().tolist())
+                            else:
+                                type_opts = sorted(qto_df["Type"].dropna().unique().tolist()) if "Type" in qto_df else []
+                            type_options = ["All"] + type_opts
+                            type_filter = st.selectbox("Filter by Type", type_options, key="qto_type_filter")
 
-                        # Applica i filtri
+                        # Applica i filtri (Level -> Class -> Type)
                         filtered_df = qto_df.copy()
-                        if class_filter != "All" and "Class" in filtered_df:
-                            filtered_df = filtered_df[filtered_df["Class"] == class_filter]
                         if level_filter != "All" and "Level" in filtered_df:
                             filtered_df = filtered_df[filtered_df["Level"] == level_filter]
+                        if class_filter != "All" and "Class" in filtered_df:
+                            filtered_df = filtered_df[filtered_df["Class"] == class_filter]
                         if type_filter != "All" and "Type" in filtered_df:
                             filtered_df = filtered_df[filtered_df["Type"] == type_filter]
 
@@ -389,7 +406,7 @@ def execute():
                             )
 
                             # Mostra tabella
-                            st.dataframe(df_quantities_final, width="stretch")
+                            st.dataframe(df_quantities_final, use_container_width=True)
 
                             # ------------------------------
                             # SOLO SE HO SCELTO UNA CLASSE
@@ -407,7 +424,7 @@ def execute():
                                             names="Type",
                                             title="Type Distribution"
                                         )
-                                        st.plotly_chart(fig, width="content")  # instead of use_container_width=False
+                                        st.plotly_chart(fig, use_container_width=True)
 
                                 # Pie chart LEVEL
                                 if "Level" in df_quantities_filtered:
@@ -417,7 +434,7 @@ def execute():
                                             names="Level",
                                             title="Level Distribution"
                                         )
-                                        st.plotly_chart(fig, width="content")  # instead of use_container_width=False
+                                        st.plotly_chart(fig, use_container_width=True)
 
                         else:
                             st.info("ℹ️ No quantities available for the selected filters.")
@@ -429,47 +446,87 @@ def execute():
 
 
         # ----------------------------------------
-        # TAB 4 - Report PDF
+        # TAB 4 - Report HTML
         # ----------------------------------------
         with tab4:
-            if "report_data" in st.session_state:
-                st.subheader("Generate Report")
+            st.subheader("Generate Report (HTML)")
 
+            if "report_data" not in st.session_state or "report_fig" not in st.session_state:
+                st.info("Create a report first in the Properties tab to enable HTML export.")
+            else:
                 df_report = st.session_state["report_data"]
                 fig = st.session_state["report_fig"]
 
+                # Build HTML: include table and the Plotly chart (plotly js via CDN)
+                try:
+                    plot_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
+                except Exception:
+                    plot_html = "<p>Chart unavailable for preview.</p>"
+
+                table_html = df_report.to_html(index=False)
+
+                full_html = f"""<!doctype html>
+                <html>
+                <head>
+                    <meta charset='utf-8'/>
+                    <title>Distribution Report</title>
+                    <style>body{{font-family: Arial, Helvetica, sans-serif; padding:20px}} table{{border-collapse:collapse;}} table, th, td{{border:1px solid #ccc; padding:6px}}</style>
+                </head>
+                <body>
+                    <h1>Distribution Report</h1>
+                    <h2>Data</h2>
+                    {table_html}
+                    <h2>Chart</h2>
+                    {plot_html}
+                </body>
+                </html>"""
+
+                # Preview in page
+                try:
+                    st.components.v1.html(full_html, height=800)
+                except Exception:
+                    st.markdown("Preview unavailable; use the download button to get the HTML file.")
+
+                # Download
+                st.download_button(
+                    label="📥 Download HTML Report",
+                    data=full_html.encode('utf-8'),
+                    file_name="report_distribution.html",
+                    mime="text/html"
+                )
+
+                # Option: generate PDF as well
                 if st.button("Generate PDF Report"):
                     try:
-                        charts = [fig]  # lista di grafici Plotly
+                        charts = [fig]
                         output_path = pandashelper.create_distribution_report(
                             df_report,
                             charts=charts,
                             output_path="report_distribution.pdf",
-                            logo_path="assets/logo.png"  # 🔹 Inserisci qui il tuo logo se serve
+                            logo_path="assets/logo.png"
                         )
 
-                        # 🔹 Leggi il file PDF come base64 per mostrarlo in anteprima
                         with open(output_path, "rb") as f:
-                            base64_pdf = base64.b64encode(f.read()).decode("utf-8")
+                            pdf_bytes = f.read()
+                        encoded = base64.b64encode(pdf_bytes).decode('utf-8')
 
+                        # Preview PDF
                         pdf_display = f"""
-                        <iframe src="data:application/pdf;base64,{base64_pdf}" 
-                                width="100%" height="800" type="application/pdf">
-                        </iframe>
+                        <iframe src="data:application/pdf;base64,{encoded}" width="100%" height="800" type="application/pdf"></iframe>
                         """
                         st.markdown(pdf_display, unsafe_allow_html=True)
 
-                        # 🔹 Pulsante di download sotto l'anteprima
-                        with open(output_path, "rb") as f:
-                            st.download_button(
-                                label="📥 Download PDF Report",
-                                data=f,
-                                file_name=os.path.basename(output_path),
-                                mime="application/pdf",
-                            )
+                        # Download PDF
+                        st.download_button(
+                            label="📥 Download PDF Report",
+                            data=pdf_bytes,
+                            file_name=os.path.basename(output_path),
+                            mime="application/pdf"
+                        )
 
                     except Exception as e:
-                        st.error(f"❌ Failed to generate the report: {e}")
+                        st.error(f"❌ Failed to generate the PDF report: {e}")
+
 
 # Avvio applicazione
 execute()

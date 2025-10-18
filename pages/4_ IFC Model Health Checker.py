@@ -4,6 +4,7 @@ from datetime import datetime
 import ifcopenshell as ifc
 import plotly.express as px
 import base64
+from tools.ifc_432_dictionary import IFC_STRUCTURAL_DICTIONARY_4x3
 
 # Alias per accesso rapido allo stato di sessione
 session = st.session_state
@@ -24,16 +25,21 @@ def initialize_session_state():
 # =============================================================================
 def load_data():
     if "ifc_file" in session:
-        # --- PART 1: Dati per il Grafico di Sinistra (Elementi Strutturali) ---
-        classes_by_schema = {
-            "IFC2X3": ["IfcBeam", "IfcColumn", "IfcSlab", "IfcWall", "IfcWallStandardCase", "IfcFooting", "IfcMember", "IfcReinforcingBar", "IfcReinforcingMesh", "IfcTendon", "IfcTendonAnchor", "IfcStructuralConnection", "IfcStructuralCurveMember", "IfcStructuralSurfaceMember", "IfcRamp", "IfcStair"],
-            "IFC4": ["IfcBeam", "IfcColumn", "IfcSlab", "IfcWall", "IfcWallStandardCase", "IfcFooting", "IfcMember", "IfcReinforcingBar", "IfcReinforcingMesh", "IfcTendon", "IfcTendonAnchor", "IfcStructuralConnection", "IfcStructuralCurveMember", "IfcStructuralSurfaceMember", "IfcRamp", "IfcStair"],
-            "IFC4X3": ["IfcBeam", "IfcColumn", "IfcSlab", "IfcWall", "IfcWallStandardCase", "IfcFooting", "IfcMember", "IfcReinforcingBar", "IfcReinforcingMesh", "IfcTendon", "IfcTendonAnchor", "IfcStructuralConnection", "IfcStructuralCurveMember", "IfcStructuralSurfaceMember", "IfcRamp", "IfcStair", "IfcBearing"]
-        }
-        schema = session.ifc_file.schema
-        target_classes = classes_by_schema.get(schema, classes_by_schema["IFC4"])
+        # Enforce IFC4x3 schema and use provided dictionary for target classes
+        schema_obj = session.ifc_file.schema
+        schema_id = getattr(schema_obj, 'schema_identifier', str(schema_obj)).upper()
+        if "IFC4X3" not in schema_id:
+            st.warning(f"Model schema detected: {schema_id}. This analyzer is designed for IFC4X3 and will use the IFC4x3 dictionary.")
 
-        structural_counts = {cls: len(session.ifc_file.by_type(cls)) for cls in target_classes}
+        # Use keys from IFC_STRUCTURAL_DICTIONARY_4x3 as target classes
+        target_classes = list(IFC_STRUCTURAL_DICTIONARY_4x3.keys())
+
+        structural_counts = {}
+        for cls in target_classes:
+            try:
+                structural_counts[cls] = len(session.ifc_file.by_type(cls))
+            except Exception:
+                structural_counts[cls] = 0
         structural_counts = {k: v for k, v in structural_counts.items() if v > 0}
         structural_sorted = sorted(structural_counts.items(), key=lambda item: item[1], reverse=True)
 
@@ -42,7 +48,7 @@ def load_data():
         for entity in session.ifc_file:
             class_name = entity.is_a()
             all_entity_counts[class_name] = all_entity_counts.get(class_name, 0) + 1
-        
+
         all_entity_sorted = sorted(all_entity_counts.items(), key=lambda item: item[1], reverse=True)
 
         # ❗ CORREZIONE: Salva TUTTE le statistiche necessarie per evitare il KeyError
@@ -186,7 +192,12 @@ def execute():
     initialise_debug_props()
     st.set_page_config(page_title="Health", layout="wide")
     st.header("❓ Model Health")
-    st.markdown("Automated analysis of BIM model health based on structural elements and data richness.")
+    # Short English description (similar style to other pages)
+    st.markdown("""
+    Brief: Automated model health analysis focused on structural element counts and data richness. 
+    Uses the IFC4x3 structural dictionary to assess key classes and provides simple health metrics and charts.
+    """)
+    st.markdown("Reference: [IFC4.3 Documentation - buildingSMART](https://ifc43-docs.standards.buildingsmart.org/)")
 
     if "isHealthDataLoaded" not in session:
         initialize_session_state()

@@ -5,6 +5,13 @@ import streamlit as st
 import json
 import pandas as pd
 import plotly.express as px
+import io
+import zipfile
+import tempfile
+from datetime import datetime
+from fpdf import FPDF
+import textwrap
+import re
 
 # ─────────────────────────────────────────────
 # 📦 Importazioni da cartelle dell'applicazione
@@ -69,7 +76,10 @@ st.title("🏗️ Information Delivery Specification")
 st.markdown(
     "Create and manage IDS rules for validating your IFC4x3 models. "
     "Create rules based on IFC classes and their properties, then validate your loaded IFC file against these rules."
+    "Check information quality and consistency easily."
 )
+# Reference to buildingSMART IDS
+st.markdown("Reference: [buildingSMART - Information Delivery Specification (IDS)](https://www.buildingsmart.org/standards/bsi-standards/information-delivery-specification-ids/)")
 
 # ─────────────────────────────────────────────
 # ✅ Inizializza IDS rules in sessione
@@ -161,7 +171,7 @@ else:
 # ─────────────────────────────────────────────
 # Tabs principali
 # ─────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs(["📝 Current IDS Rules", "✅ IDS Validation Results", "🧪 Automatic IDS Test"])
+tab1, tab2, tab3, tab_xml = st.tabs(["📝 Current IDS Rules", "✅ IDS Validation Results", "🧪 Automatic IDS Test", "🗎 XML Output"])
 
 # ─────────────────────────────────────────────
 # Tab 1: Current IDS Rules
@@ -169,6 +179,7 @@ tab1, tab2, tab3 = st.tabs(["📝 Current IDS Rules", "✅ IDS Validation Result
 with tab1:
     st.markdown("Create IDS rules in the sidebar. Each rule consists of an IFC class and one property set + with the associated property name. You can specify if each property is mandatory or optional. Once defined, you can export your IDS as a JSON file or you can validate the loaded IFC model in the 'IDS Validation Results' tab.")
     st.subheader("📝 Current IDS Rules Table")
+    st.markdown("This tab lets you create and export IDS rules. Detected issues from validations are exported from the 'BCF / Reports' tab as CSV, HTML, PDF or a minimal BCF ZIP.")
     if session.ids_rules:
         cols = st.columns([1, 2, 2, 2, 1, 1])
         headers = ["Rule#", "IFC Class", "Property Set", "Property Name", "Mandatory", "Remove"]
@@ -200,8 +211,11 @@ with tab1:
 # Tab 2: IDS Validation Results
 # ─────────────────────────────────────────────
 with tab2:
+    st.markdown("This tab runs IDS validation on the loaded IFC model. Validation results are saved and can be exported from the 'BCF / Reports' tab as CSV, HTML, PDF or a minimal BCF ZIP.")
     if ifc_model and session.ids_rules:
         df = validate_ifc_with_ids(ifc_model, session.ids_rules)
+        # salva l'ultimo risultato di validazione in sessione per l'esportazione
+        session.ids_last_validation_df = df
         if not df.empty and "Compliant" in df.columns:
             st.subheader("✅ IDS Validation Table")
             st.dataframe(df, use_container_width=True)
@@ -226,6 +240,7 @@ with tab2:
 # Tab 3: Automatic IDS Test
 # ─────────────────────────────────────────────
 with tab3:
+    st.markdown("This tab allows you to upload IDS or export-configuration JSON files for automated testing. Test results are stored and can be exported from the 'BCF / Reports' tab.")
     st.subheader("🧪 Test IDS on IFC File")
 
     st.info(
@@ -294,6 +309,8 @@ with tab3:
 
     if ifc_model and test_ids:
         df_test = validate_ifc_with_ids(ifc_model, test_ids)
+        # salva l'ultimo risultato di validazione in sessione per l'esportazione
+        session.ids_last_validation_df = df_test
         st.subheader("✅ IDS Test Results")
         st.dataframe(df_test, use_container_width=True)
 
@@ -316,3 +333,38 @@ with tab3:
             "👈 Upload IDS JSON or Export Configuration to run the test; "
             "IFC file must be loaded in Home."
         )
+
+# ─────────────────────────────────────────────
+# Tab 4: XML Output
+# ─────────────────────────────────────────────
+with tab_xml:
+    st.subheader("🗎 IDS XML Output")
+    if "ids_rules" not in session or not session.ids_rules:
+        st.info("No IDS rules defined. Create rules in the sidebar to generate XML.")
+    else:
+        import xml.etree.ElementTree as ET
+        from xml.dom import minidom
+
+        root = ET.Element('IDS')
+        for rule in session.ids_rules:
+            rule_el = ET.SubElement(root, 'Rule')
+            rule_el.set('ifc_class', str(rule.get('ifc_class', '')))
+            props_el = ET.SubElement(rule_el, 'Properties')
+            for prop in rule.get('properties', []):
+                p = ET.SubElement(props_el, 'Property')
+                p.set('property_set', str(prop.get('property_set', '')))
+                p.set('name', str(prop.get('property_name', '')))
+                p.set('mandatory', str(bool(prop.get('mandatory', False))).lower())
+                # placeholder value if needed
+                if prop.get('property_name') and prop.get('property_name') != 'ALL':
+                    p.text = ''
+
+        xml_bytes = ET.tostring(root, encoding='utf-8')
+        pretty_xml = minidom.parseString(xml_bytes).toprettyxml(indent='  ')
+        st.code(pretty_xml, language='xml')
+        st.download_button("💾 Download IDS XML", pretty_xml, "ids_rules.xml", "application/xml")
+
+# ─────────────────────────────────────────────
+# Tab 4: moved to a dedicated page
+# The BCF / Reports tab has been moved to: pages/1_BIM Collaboration Specification.py
+# ─────────────────────────────────────────────

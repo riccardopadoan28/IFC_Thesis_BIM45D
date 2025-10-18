@@ -9,12 +9,17 @@ from tools.ifc_432_dictionary import IFC_STRUCTURAL_DICTIONARY_4x3
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="⚙️ IFC Export Configuration", layout="wide")
 st.title("⚙️ IFC Export Configuration")
-st.markdown("""
-            Create a new IFC export configuration based on IFC4x3.
-            Define general export settings in the form below and add export rules in the sidebar.
-            Download the configuration as JSON files ready to be uploaded in your BIM-authority software.
-            """)
 
+# Brief English summary
+st.markdown("""
+This page helps you create IFC4x3 export configurations for BIM authoring tools.
+Configure general export settings, geometry level-of-detail, georeferencing, and which IFC entities to include.
+Utilize the form below and add export rules in the sidebar.
+Export a ready-to-use JSON file to import into IFC exporters.
+""")
+
+# Reference to IFC4.3 documentation
+st.markdown("Reference: [IFC4.3 Documentation - buildingSMART](https://ifc43-docs.standards.buildingsmart.org/)")
 
 # ─────────────────────────────────────────────
 # 🔁 Inizializzazione session_state
