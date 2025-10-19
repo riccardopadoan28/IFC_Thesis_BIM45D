@@ -1,11 +1,29 @@
-from email.policy import default
+# ─────────────────────────────────────────────
+# 📦 Importazioni
+# ─────────────────────────────────────────────
+import ifcopenshell as ifc
 import streamlit as st
 from tools import ifchelper
 from tools import graph_maker
 from datetime import datetime
-import ifcopenshell as ifc
+from email.policy import default
 
-session = st.session_state # Alias for session state
+# ─────────────────────────────────────────────
+# 🧠 Alias per lo stato della sessione Streamlit
+# ─────────────────────────────────────────────
+session = st.session_state 
+
+# -----------------------------
+# ORGANIZZAZIONE DELLA PAGINA
+# -----------------------------
+# Elenco funzioni/aree (in italiano):
+# 1) initialize_session_state -> USATA: esecuzione pagina; SCOPO: inizializza lo stato di sessione
+# 2) load_work_schedules -> USATA: Tab 'Schedules'; SCOPO: carica IfcWorkSchedule e IfcTask dal file IFC
+# 3) add_work_schedule -> USATA: Sidebar (Work Scheduler); SCOPO: crea una IfcWorkSchedule
+# 4) draw_schedules -> USATA: Tab 'Schedules'; SCOPO: mostra le schedule caricate e le attività correlate
+# 5) draw_side_bar -> USATA: Sidebar; SCOPO: controlli per creare schedule e salvare il file
+# 6) initialise_debug_props, get_object_data, edit_object_data -> USATA: Tab 'Debug'; SCOPO: ispezione e debug degli oggetti IFC
+# 7) execute -> USATA: entry point della pagina; SCOPO: costruisce l'interfaccia Streamlit e coordina le tab
 
 def initialize_session_state():
     session["isHealthDataLoaded"] = False
@@ -152,6 +170,15 @@ def execute():
     
     initialise_debug_props()
     st.header(" 📅 Project Timeline")
+    # Brief: This page manages the project timeline (4D) using IFC WorkSchedules, WorkPlans and IfcTasks.
+    # Use the selector and Schedule Manager to create, assign and review schedules and tasks linked to model elements.
+    st.markdown(
+        """
+        This page manages the project timeline (4D) using IFC WorkSchedules, WorkPlans and IfcTasks. 
+        Use the selector and Schedule Manager to create, assign and review schedules and tasks linked to model elements.
+        """
+    )
+    st.markdown("Reference: [IFC4x3 Construction Scheduling - buildingSMART](https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE/IFC4x3/HTML/annex_e/construction-scheduling/construction-scheduling-task.html)")
 
     if "isHealthDataLoaded" not in session or "SequenceData" not in session:
         initialize_session_state()

@@ -1,3 +1,6 @@
+# ─────────────────────────────────────────────
+# 📦 Importazioni
+# ─────────────────────────────────────────────
 import streamlit as st
 from tools import ifchelper, graph_maker, pandashelper
 from datetime import datetime
@@ -6,7 +9,9 @@ import plotly.express as px
 import base64
 from tools.ifc_432_dictionary import IFC_STRUCTURAL_DICTIONARY_4x3
 
-# Alias per accesso rapido allo stato di sessione
+# ─────────────────────────────────────────────
+# 🧠 Alias per lo stato della sessione Streamlit
+# ─────────────────────────────────────────────
 session = st.session_state
 
 # =============================================================================
@@ -19,6 +24,16 @@ def initialize_session_state():
     session["SequenceData"] = {}
     session["CostScheduleData"] = {}
     session['summary_stats'] = None
+
+# -----------------------------
+# ORGANIZZAZIONE DELLA PAGINA
+# -----------------------------
+# Elenco funzioni/aree (in italiano):
+# 1) initialize_session_state -> USATA: esecuzione pagina; SCOPO: inizializza lo stato
+# 2) load_data -> USATA: Charts tab; SCOPO: calcola statistiche e grafici
+# 3) draw_content -> USATA: Charts tab; SCOPO: mostra risultati e interpretazione
+# 4) initialise_debug_props, get_object_data, edit_object_data -> USATA: Debug; SCOPO: ispezione oggetti (opzionale)
+# 5) execute -> USATA: entry point; SCOPO: costruisce UI pagina
 
 # =============================================================================
 # 📊 Caricamento dati e calcolo di TUTTE le statistiche
@@ -194,7 +209,7 @@ def execute():
     st.header("❓ Model Health")
     # Short English description (similar style to other pages)
     st.markdown("""
-    Brief: Automated model health analysis focused on structural element counts and data richness. 
+    Automated model health analysis focused on structural element counts and data richness. 
     Uses the IFC4x3 structural dictionary to assess key classes and provides simple health metrics and charts.
     """)
     st.markdown("Reference: [IFC4.3 Documentation - buildingSMART](https://ifc43-docs.standards.buildingsmart.org/)")

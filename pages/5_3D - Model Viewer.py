@@ -1,10 +1,30 @@
+# ─────────────────────────────────────────────
+# 📦 Importazioni
+# ─────────────────────────────────────────────
 import streamlit as st
-from tools import ifchelper
 import json
 import ifcopenshell
+import streamlit.components.v1 as components
 from pathlib import Path
 from typing import Optional
-import streamlit.components.v1 as components
+from tools import ifchelper
+
+
+# ─────────────────────────────────────────────
+# 🧠 Alias per lo stato della sessione Streamlit
+# ─────────────────────────────────────────────
+session = st.session_state
+
+# -----------------------------
+# ORGANIZZAZIONE DELLA PAGINA
+# -----------------------------
+# Elenco funzioni/aree (in italiano):
+# - ifc_js_viewer: USATA: viewer component; SCOPO: wrapper per componente custom
+# - draw_3d_viewer: USATA: tab principale; SCOPO: salva file temporaneo e carica viewer
+# - get_psets_from_ifc_js / format_ifc_js_psets: USATA: Properties tab; SCOPO: mostra property sets
+# - Debug helpers (initialise_debug_props, get_object_data, edit_object_data): USATA: Debug tab
+# - execute: USATA: entry point
+
 
 # ─────────────────────────────────────────────
 # 📦 Dichiarazione componente custom IFC.js Viewer

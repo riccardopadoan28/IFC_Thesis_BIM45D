@@ -12,16 +12,21 @@ from datetime import datetime
 from fpdf import FPDF
 import textwrap
 import re
-
-# ─────────────────────────────────────────────
-# 📦 Importazioni da cartelle dell'applicazione
-# ─────────────────────────────────────────────
 from tools import ifchelper
 
 # ─────────────────────────────────────────────
 # 🧠 Alias per lo stato della sessione Streamlit
 # ─────────────────────────────────────────────
 session = st.session_state
+
+# -----------------------------
+# ORGANIZZAZIONE DELLA PAGINA
+# -----------------------------
+# Panoramica funzioni/aree (in italiano):
+# - validate_ifc_with_ids -> USATA: Tab IDS Validation Results e Automatic Test; SCOPO: valida IFC rispetto a regole IDS
+# - Sidebar rule creator -> USATA: Sidebar; SCOPO: creare regole IDS
+# - Tab outputs -> USATA: vari tab; SCOPO: mostrare regole, risultati, test e XML
+
 
 # ─────────────────────────────────────────────
 # 📚 Funzioni di supporto
@@ -66,7 +71,6 @@ def validate_ifc_with_ids(ifc_file, ids_rules):
                 })
 
     return pd.DataFrame(results)
-
 
 # ─────────────────────────────────────────────
 # ⚙️ Pagina IDS

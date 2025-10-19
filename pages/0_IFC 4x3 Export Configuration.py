@@ -1,8 +1,21 @@
+# ─────────────────────────────────────────────
+# 📦 Importazioni
+# ─────────────────────────────────────────────
 import streamlit as st
 import json
 import pandas as pd
-
 from tools.ifc_432_dictionary import IFC_STRUCTURAL_DICTIONARY_4x3
+
+# -----------------------------
+# ORGANIZZAZIONE DELLA PAGINA
+# -----------------------------
+# Elenco funzioni/zone della pagina e loro scopo (in italiano):
+# 1) get_dictionary -> USATA: export config; SCOPO: restituisce dizionario IFC4x3
+# 2) render_ifc4x3_settings -> USATA: Tab General; SCOPO: form principale per le impostazioni di export
+# 3) Sidebar export rules -> USATA: Sidebar; SCOPO: selezione entità da includere e generazione del filtro ExcludeFilter
+# 4) JSON Output -> USATA: Tab JSON; SCOPO: mostra e scarica la configurazione JSON
+# Nota: le stringhe visibili all'utente sono in inglese; i commenti sono in italiano.
+
 
 # ─────────────────────────────────────────────
 # ⚙️ Pagina principale

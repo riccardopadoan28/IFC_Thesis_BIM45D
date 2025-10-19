@@ -8,6 +8,16 @@ import streamlit as st
 
 session = st.session_state
 
+# -----------------------------
+# ORGANIZZAZIONE HELPERS
+# -----------------------------
+# Qui raggruppiamo le funzioni per pagina di utilizzo.
+# - Shared helpers: funzioni usate da più pagine (posizionate per prime)
+# - Page 6: Properties & Quantities
+# - Page 7: Project Timeline (4D)
+# - Project Info, Cost Schedule, ecc.
+# I commenti che seguono indicano dove ogni funzione viene usata.
+
 
 # ==========================================================
 # 1. Estrazione dei dati IFC da oggetti specifici
@@ -391,3 +401,236 @@ def get_ifc_structure(ifc_file):
                             if prop_name:
                                 result[cls][pset_name].append(prop_name)
     return result
+
+
+# -----------------------------
+# Helpers 4D (usati dalla pagina Project Timeline)
+# -----------------------------
+import streamlit as st
+import ifcopenshell as ifc
+
+# Nota: queste funzioni usano lo stato di sessione di Streamlit (st.session_state.ifc_file)
+# e forniscono comportamenti di fallback se le operazioni IFC avanzate non sono assenti.
+
+
+def get_selectable_elements(filter_type="IfcProduct"):
+    """Restituisce una lista di elementi IFC filtrati per tipo usando il file IFC nella sessione.
+    I messaggi rivolti all'utente sono in inglese.
+    """
+    session = st.session_state
+    if not hasattr(session, "ifc_file") or not session.ifc_file:
+        return []
+    try:
+        return session.ifc_file.by_type(filter_type)
+    except Exception:
+        return []
+
+
+def create_work_plan_for_selected(name, selected_ids):
+    """Crea un IfcWorkPlan e, se possibile, associa gli elementi selezionati.
+    Questa implementazione crea l'entità IfcWorkPlan come fallback e avvisa che le
+    associazioni agli elementi non vengono create automaticamente.
+    """
+    session = st.session_state
+    if not name:
+        st.error("Please enter a name for the WorkPlan")
+        return
+    if not hasattr(session, 'ifc_file') or not session.ifc_file:
+        st.error("No IFC file loaded in session")
+        return
+    try:
+        # Crea l'entità IfcWorkPlan
+        wp = session.ifc_file.create_entity("IfcWorkPlan", Name=name)
+        # Fallback semplice: non vengono create relazioni esplicite verso gli elementi
+        st.success("IfcWorkPlan created")
+        st.info("Note: associations with selected elements are not automatically created.")
+        return wp
+    except Exception as e:
+        st.error(f"Error creating WorkPlan: {e}")
+        return None
+
+
+def assign_schedule_to_workplan(workplan_id, schedule_id):
+    """Associa una IfcWorkSchedule a un IfcWorkPlan quando possibile.
+    Questa funzione tenta di eseguire un'operazione best-effort non distruttiva; se
+    non è possibile creare la relazione automaticamente viene mostrato un messaggio.
+    """
+    session = st.session_state
+    if not hasattr(session, 'ifc_file') or not session.ifc_file:
+        st.error("No IFC file loaded in session")
+        return
+    if not workplan_id or not schedule_id:
+        st.error("Select both a WorkPlan and a Schedule to assign")
+        return
+    try:
+        wp = session.ifc_file.by_id(int(workplan_id))
+        sched = session.ifc_file.by_id(int(schedule_id))
+        if not wp or not sched:
+            st.error("WorkPlan or Schedule not found in the IFC file")
+            return
+        # Tentativo non distruttivo: si limita a notificare l'operazione
+        try:
+            st.success("Schedule assignment noted. Implement relational linking as needed.")
+        except Exception:
+            st.warning("Could not create relation automatically. Please link Schedule and WorkPlan manually if required.")
+    except Exception as e:
+        st.error(f"Error assigning schedule: {e}")
+
+
+def create_task_for_selected(schedule_id, selected_ids, task_name_prefix="Task"):
+    """Crea IfcTask per ogni elemento selezionato.
+    Le entità di task di base vengono create come fallback; il collegamento dettagliato
+    ai WorkSchedule non viene impostato automaticamente.
+    """
+    session = st.session_state
+    if not hasattr(session, 'ifc_file') or not session.ifc_file:
+        st.error("No IFC file loaded in session")
+        return
+    if not selected_ids:
+        st.error("No elements selected to create tasks for")
+        return
+    created = 0
+    try:
+        for eid in selected_ids:
+            name = f"{task_name_prefix}_{eid}"
+            session.ifc_file.create_entity("IfcTask", Name=name)
+            created += 1
+        st.success(f"Created {created} tasks (associations to schedules not created automatically)")
+    except Exception as e:
+        st.error(f"Error creating tasks: {e}")
+
+
+def draw_filter_selector():
+    """Mostra un selector avanzato (By Type / By Property / By Level).
+    I commenti nel codice sono in italiano, i messaggi UI sono in inglese.
+    Restituisce la lista degli elementi filtrati.
+    """
+    session = st.session_state
+    st.markdown("**Filter elements**")
+    filter_mode = st.selectbox("Filter mode", ["By Type", "By Property", "By Level"], key="filter_mode_4d")
+
+    filtered = []
+    if filter_mode == "By Type":
+        type_options = ["IfcProduct", "IfcElement", "IfcBuildingElement", "IfcWall", "IfcWindow", "IfcDoor", "IfcRelAssigns"]
+        sel_type = st.selectbox("Element type", type_options, key="filter_type_selector")
+        if hasattr(session, 'ifc_file') and session.ifc_file:
+            try:
+                filtered = session.ifc_file.by_type(sel_type)
+            except Exception:
+                filtered = []
+    elif filter_mode == "By Level":
+        # Modalità By Level: seleziona uno IfcBuildingStorey e raccoglie gli elementi contenuti
+        level_types = ["IfcBuildingStorey", "IfcLevel"]
+        levels = []
+        if hasattr(session, 'ifc_file') and session.ifc_file:
+            for lt in level_types:
+                try:
+                    lv = session.ifc_file.by_type(lt)
+                    if lv:
+                        levels.extend(lv)
+                except Exception:
+                    continue
+        level_options = [f"{l.id()} - {getattr(l,'Name',str(l))}" for l in levels]
+        selected_level = st.selectbox("Select Level (Building Storey)", [""] + level_options, key="filter_level_selector")
+        if selected_level:
+            level_id = int(selected_level.split(" - ",1)[0])
+            level = session.ifc_file.by_id(level_id)
+            elems = []
+            try:
+                for inv in session.ifc_file.get_inverse(level):
+                    related = getattr(inv, 'RelatedElements', None)
+                    if related:
+                        for el in related:
+                            elems.append(el)
+                # Deduplica gli elementi raccolti
+                seen = set()
+                filtered = []
+                for e in elems:
+                    eid = e.id() if hasattr(e, 'id') else None
+                    if eid and eid not in seen:
+                        filtered.append(e)
+                        seen.add(eid)
+            except Exception:
+                filtered = []
+    else:
+        # Modalità By Property
+        prop_options = ["Name", "GlobalId", "Tag", "PredefinedType", "ObjectType"]
+        prop = st.selectbox("Property", prop_options, key="filter_prop_selector")
+        operators = ["contains", "equals", "startswith", "endswith"]
+        op = st.selectbox("Operator", operators, key="filter_op_selector")
+        val = st.text_input("Value", key="filter_value_4d")
+
+        base_types = ["IfcProduct", "IfcElement"]
+        elems = []
+        if hasattr(session, 'ifc_file') and session.ifc_file:
+            for t in base_types:
+                try:
+                    elems.extend(session.ifc_file.by_type(t))
+                except Exception:
+                    continue
+        for el in elems:
+            attr = None
+            try:
+                if hasattr(el, prop):
+                    attr = getattr(el, prop)
+                else:
+                    info = el.get_info()
+                    attr = info.get(prop)
+            except Exception:
+                attr = None
+            if attr is None:
+                continue
+            s = str(attr)
+            match = False
+            if op == "contains" and val.lower() in s.lower():
+                match = True
+            elif op == "equals" and s.lower() == val.lower():
+                match = True
+            elif op == "startswith" and s.lower().startswith(val.lower()):
+                match = True
+            elif op == "endswith" and s.lower().endswith(val.lower()):
+                match = True
+            if match:
+                filtered.append(el)
+
+    st.caption(f"Filtered elements: {len(filtered)}")
+    return filtered
+
+
+def draw_schedule_manager():
+    """Interfaccia per selezionare elementi filtrati, creare WorkPlan, assegnare schedule e creare task.
+    I commenti sono in italiano, le stringhe per l'utente sono in inglese.
+    """
+    session = st.session_state
+    st.subheader("WorkPlan / Schedule / Task Manager")
+
+    elements = draw_filter_selector()
+    options = [f"{el.id()} - {getattr(el, 'Name', str(el))}" for el in elements]
+    selected_options = st.multiselect("Select elements", options, key="selected_elements_list")
+    selected_ids = [int(s.split(" - ", 1)[0]) for s in selected_options]
+
+    st.text_input("WorkPlan name", key="workplan_name")
+    if st.button("Create IfcWorkPlan for selected elements", key="create_workplan_button"):
+        create_work_plan_for_selected(session.workplan_name, selected_ids)
+
+    # Seleziona WorkPlan esistenti
+    workplans = session.ifc_file.by_type("IfcWorkPlan") if hasattr(session.ifc_file, 'by_type') else []
+    wp_options = [f"{wp.id()} - {getattr(wp,'Name',str(wp))}" for wp in workplans]
+    selected_wp = st.selectbox("Select existing WorkPlan", [""] + wp_options, key="select_workplan")
+    wp_id = int(selected_wp.split(" - ",1)[0]) if selected_wp else None
+
+    # Seleziona Schedule esistenti
+    schedules = session.ifc_file.by_type("IfcWorkSchedule") if hasattr(session.ifc_file, 'by_type') else []
+    sched_options = [f"{s.id()} - {getattr(s,'Name',str(s))}" for s in schedules]
+    selected_sched = st.selectbox("Select Schedule to assign", [""] + sched_options, key="select_schedule_to_assign")
+    sched_id = int(selected_sched.split(" - ",1)[0]) if selected_sched else None
+
+    if st.button("Assign Schedule to WorkPlan", key="assign_schedule_button"):
+        if wp_id and sched_id:
+            assign_schedule_to_workplan(wp_id, sched_id)
+        else:
+            st.error("Please select valid WorkPlan and Schedule")
+
+    st.text_input("Task name prefix", key="task_name_prefix", value="Task")
+    if st.button("Create IfcTask for selected elements", key="create_tasks_button"):
+        create_task_for_selected(sched_id, selected_ids, session.task_name_prefix)

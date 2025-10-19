@@ -1,11 +1,23 @@
-# New page: BCF / BIM Collaboration Specification
+# ─────────────────────────────────────────────
+# 📦 Importazioni
+# ─────────────────────────────────────────────
 import streamlit as st
 import json
 import textwrap
 import re
 import io
 
+# ─────────────────────────────────────────────
+# 🧠 Alias per lo stato della sessione Streamlit
+# ─────────────────────────────────────────────
 session = st.session_state
+
+# -----------------------------
+# ORGANIZZAZIONE DELLA PAGINA
+# -----------------------------
+# Questa pagina mostra i risultati IDS salvati e consente l'export in TXT/HTML per report BCF-like.
+# Funzioni principali:
+# - visualizzazione df di issues e selezione righe per esportazione
 
 st.set_page_config(page_title="BCF / BIM Collaboration", layout='wide')
 st.title("📦 BIM Collaboration / BCF Reports")

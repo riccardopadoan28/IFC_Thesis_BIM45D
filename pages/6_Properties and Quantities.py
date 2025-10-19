@@ -1,3 +1,6 @@
+# ─────────────────────────────────────────────
+# 📦 Importazioni
+# ─────────────────────────────────────────────
 import sys
 import os
 import streamlit as st
@@ -9,12 +12,23 @@ import ifcopenshell as ifc
 from tools import ifchelper, pandashelper, graph_maker
 from tools.ifchelper import get_ifc_quantities
 
-
 # Import helpers
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Alias per la sessione Streamlit
+# ─────────────────────────────────────────────
+# 🧠 Alias per lo stato della sessione Streamlit
+# ─────────────────────────────────────────────
 session = st.session_state
+
+# -----------------------------
+# ORGANIZZAZIONE DELLA PAGINA
+# -----------------------------
+# Elenco funzioni/aree (in italiano):
+# 1) initialize_session_state -> USATA: inizializza lo stato della sessione per DataFrame
+# 2) load_data -> USATA: Tab DataFrame; SCOPO: carica oggetti e costruisce DataFrame
+# 3) load_quantities -> USATA: Tab Quantities; SCOPO: costruisce DataFrame quantità
+# 4) get_ifc_pandas/get_ifc_quantities -> USATA: Data Extraction; SCOPO: parsing IFC
+# 5) execute -> USATA: entry point; SCOPO: costruisce UI e tabs
 
 # ----------------------------------------------------
 # Inizializza le variabili necessarie nella sessione
@@ -196,8 +210,13 @@ def download_excel():
 def execute():
     st.set_page_config(page_title="Properties  & QTO", layout="wide", initial_sidebar_state="expanded")
     st.header("📐 Model Properties & Quantities")
-    st.text("Explore the model properties, quantities and generate reports.")
-
+    # Breve descrizione della pagina (visibile all'utente in inglese)
+    st.markdown(
+        """
+        This page extracts properties and quantities from the loaded IFC model and provides interactive filters, charts and export options. Use the tabs to inspect the full dataframe, analyze properties per class/type/level, review quantities (QTO) and generate exportable reports.
+        """
+    )
+    
     # Inizializzazione stato
     if "IsDataFrameLoaded" not in session:
         initialize_session_state()
@@ -330,12 +349,44 @@ def execute():
                                 title=f"Distribution of {property_name}",
                                 text="Count"
                             )
-                            fig.update_traces(textposition="outside")
+                            # usa i colori della sessione per uniformità con Streamlit
+                            fig.update_traces(marker_color=session.get('color1', '#00FFAA'), textposition="outside")
+
+                            # Pulsante: aggiungi la visualizzazione attuale al report (posizionato prima del grafico)
+                            prop_key = f"add_prop_report_{level_filter}_{class_filter}_{type_filter}_{property_name}".replace(" ", "_").replace("/", "_")
+                            if st.button("Add to report", key=prop_key):
+                                session.setdefault('report_components', [])
+                                session['report_components'].append({
+                                    'type': 'property',
+                                    'level': level_filter,
+                                    'class': class_filter,
+                                    'type_filter': type_filter,
+                                    'property': property_name,
+                                    'data': df_report,
+                                    'fig': fig
+                                })
+                                st.success("Added property distribution to report components.")
+
+                            # Mostra il grafico dopo il pulsante
                             st.plotly_chart(fig, use_container_width=True)
 
                             # 🔹 Salvo i risultati in sessione per export/report
                             session["report_data"] = df_report
                             session["report_fig"] = fig
+
+                            # 🔹 Aggiungi ai componenti del report
+                            if st.button("Add to report", key=f"add_prop_report_{property_name}"):
+                                session.setdefault('report_components', [])
+                                session['report_components'].append({
+                                    'type': 'property',
+                                    'level': level_filter,
+                                    'class': class_filter,
+                                    'type_filter': type_filter,
+                                    'property': property_name,
+                                    'data': df_report,
+                                    'fig': fig
+                                })
+                                st.success("Added property distribution to report components.")
             else:
                 st.warning("⚠️ No data available. Please load an IFC file first.")
 
@@ -390,7 +441,7 @@ def execute():
                         fixed_cols = [col for col in requested_fixed_cols if col in filtered_df.columns]
                         numeric_cols = filtered_df.select_dtypes(include=["int64", "float64"]).columns.tolist()
                         cols_to_show = fixed_cols + numeric_cols
-                        df_quantities_filtered = filtered_df[cols_to_show]
+                        df_quantities_filtered = filtered_df[cols_to_show] if cols_to_show else filtered_df.copy()
 
                         # ------------------------------
                         # AGGIUNGI RIGA "TOTAL"
@@ -407,6 +458,19 @@ def execute():
 
                             # Mostra tabella
                             st.dataframe(df_quantities_final, use_container_width=True)
+
+                            # Pulsante: aggiungi la tabella delle quantità attualmente visualizzata al report
+                            if st.button("Add displayed quantities table to report", key=f"add_qto_table_{class_filter}_{type_filter}_{level_filter}"):
+                                session.setdefault('report_components', [])
+                                session['report_components'].append({
+                                    'type': 'quantity_table',
+                                    'level': level_filter,
+                                    'class': class_filter,
+                                    'type_filter': type_filter,
+                                    'data': df_quantities_final.copy(),
+                                    'fig': None
+                                })
+                                st.success("Added displayed quantities table to report components.")
 
                             # ------------------------------
                             # SOLO SE HO SCELTO UNA CLASSE
@@ -429,12 +493,40 @@ def execute():
                                 # Pie chart LEVEL
                                 if "Level" in df_quantities_filtered:
                                     with chart_cols[1]:
-                                        fig = px.pie(
+                                        fig2 = px.pie(
                                             df_quantities_filtered,
                                             names="Level",
                                             title="Level Distribution"
                                         )
-                                        st.plotly_chart(fig, use_container_width=True)
+                                        st.plotly_chart(fig2, use_container_width=True)
+
+                            # ------------------------------
+                            # Aggiungi ai componenti del report
+                            # ------------------------------
+                            if numeric_cols:
+                                st.markdown("**Add quantities visualization to report**")
+                                q_col = st.selectbox("Select numeric quantity to chart/add to report", numeric_cols, key="qto_select_numeric")
+                                if q_col:
+                                    q_fig = px.bar(
+                                        filtered_df.groupby(q_col)[q_col].sum().reset_index(name='Sum'),
+                                        x=q_col,
+                                        y='Sum',
+                                        title=f"Sum by {q_col}"
+                                    )
+                                    st.plotly_chart(q_fig, use_container_width=True)
+                                    if st.button("Add quantities chart to report", key=f"add_qto_report_{q_col}"):
+                                        session.setdefault('report_components', [])
+                                        summary_df = filtered_df[["GlobalId", "Class", "Name", q_col]].copy() if "GlobalId" in filtered_df.columns else filtered_df[[q_col]].copy()
+                                        session['report_components'].append({
+                                            'type': 'quantity',
+                                            'level': level_filter,
+                                            'class': class_filter,
+                                            'type_filter': type_filter,
+                                            'quantity': q_col,
+                                            'data': summary_df,
+                                            'fig': q_fig
+                                        })
+                                        st.success("Added quantities summary to report components.")
 
                         else:
                             st.info("ℹ️ No quantities available for the selected filters.")
@@ -446,86 +538,99 @@ def execute():
 
 
         # ----------------------------------------
-        # TAB 4 - Report HTML
+        # TAB 4 - Report HTML / PDF
         # ----------------------------------------
         with tab4:
-            st.subheader("Generate Report (HTML)")
+            st.subheader("Generate Report (HTML / PDF)")
 
-            if "report_data" not in st.session_state or "report_fig" not in st.session_state:
-                st.info("Create a report first in the Properties tab to enable HTML export.")
+            # Build report from session['report_components'] when available
+            components = session.get('report_components', [])
+
+            if not components:
+                st.info("No report components defined. Use 'Add to report' in Properties or Quantities tabs.")
             else:
-                df_report = st.session_state["report_data"]
-                fig = st.session_state["report_fig"]
+                st.markdown("### Report Components")
+                remove_indices = []
+                for i, comp in enumerate(components):
+                    cols = st.columns([8,1])
+                    cols[0].markdown(f"**{i+1}. {comp.get('type').title()}** - {comp.get('property') or comp.get('quantity') or ''}")
+                    if cols[1].button("Remove", key=f"remove_comp_{i}"):
+                        remove_indices.append(i)
 
-                # Build HTML: include table and the Plotly chart (plotly js via CDN)
-                try:
-                    plot_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
-                except Exception:
-                    plot_html = "<p>Chart unavailable for preview.</p>"
+                if remove_indices:
+                    for idx in sorted(remove_indices, reverse=True):
+                        session['report_components'].pop(idx)
+                    st.success("Selected components removed from report.")
 
-                table_html = df_report.to_html(index=False)
+                # Compose HTML by iterating components
+                html_parts = []
+                charts = []
+                for idx, comp in enumerate(components):
+                    comp_title = f"Component {idx+1}: {comp.get('type').title()}"
+                    html_parts.append(f"<h2>{comp_title}</h2>")
 
-                full_html = f"""<!doctype html>
+                    # Table
+                    try:
+                        table_html = comp['data'].to_html(index=False)
+                    except Exception:
+                        table_html = "<p>No table available</p>"
+                    html_parts.append(table_html)
+
+                    # Chart
+                    try:
+                        fig = comp.get('fig')
+                        if fig:
+                            charts.append(fig)
+                            plot_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
+                            html_parts.append(plot_html)
+                    except Exception:
+                        html_parts.append('<p>Chart unavailable</p>')
+
+                full_html = """<!doctype html>
                 <html>
                 <head>
                     <meta charset='utf-8'/>
-                    <title>Distribution Report</title>
-                    <style>body{{font-family: Arial, Helvetica, sans-serif; padding:20px}} table{{border-collapse:collapse;}} table, th, td{{border:1px solid #ccc; padding:6px}}</style>
+                    <title>Custom Distribution Report</title>
+                    <style>body{font-family: Arial, Helvetica, sans-serif; padding:20px} table{border-collapse:collapse} table, th, td{border:1px solid #ccc; padding:6px}</style>
                 </head>
-                <body>
-                    <h1>Distribution Report</h1>
-                    <h2>Data</h2>
-                    {table_html}
-                    <h2>Chart</h2>
-                    {plot_html}
+                <body>""" + """\n""".join(html_parts) + """
                 </body>
                 </html>"""
 
-                # Preview in page
-                try:
-                    st.components.v1.html(full_html, height=800)
-                except Exception:
-                    st.markdown("Preview unavailable; use the download button to get the HTML file.")
-
-                # Download
-                st.download_button(
-                    label="📥 Download HTML Report",
-                    data=full_html.encode('utf-8'),
-                    file_name="report_distribution.html",
-                    mime="text/html"
-                )
-
-                # Option: generate PDF as well
-                if st.button("Generate PDF Report"):
+                # 1) Generate PDF and HTML when requested
+                if st.button("Generate Report (create HTML & PDF)"):
                     try:
-                        charts = [fig]
-                        output_path = pandashelper.create_distribution_report(
-                            df_report,
-                            charts=charts,
-                            output_path="report_distribution.pdf",
-                            logo_path="assets/logo.png"
-                        )
-
-                        with open(output_path, "rb") as f:
-                            pdf_bytes = f.read()
-                        encoded = base64.b64encode(pdf_bytes).decode('utf-8')
-
-                        # Preview PDF
-                        pdf_display = f"""
-                        <iframe src="data:application/pdf;base64,{encoded}" width="100%" height="800" type="application/pdf"></iframe>
-                        """
-                        st.markdown(pdf_display, unsafe_allow_html=True)
-
-                        # Download PDF
-                        st.download_button(
-                            label="📥 Download PDF Report",
-                            data=pdf_bytes,
-                            file_name=os.path.basename(output_path),
-                            mime="application/pdf"
-                        )
-
+                        session['report_html_content'] = full_html
+                        output_path = pandashelper.create_distribution_report(None, charts=charts, output_path="report_distribution.pdf", logo_path="assets/logo.png", include_session_data=False)
+                        with open(output_path, 'rb') as f:
+                            session['report_pdf_bytes'] = f.read()
+                        st.success("Report generated: PDF and HTML are ready.")
                     except Exception as e:
-                        st.error(f"❌ Failed to generate the PDF report: {e}")
+                        st.error(f"❌ Failed to generate report: {e}")
+
+                # 2) Show PDF preview if generated
+                if session.get('report_pdf_bytes'):
+                    encoded = base64.b64encode(session['report_pdf_bytes']).decode('utf-8')
+                    pdf_display = f"<iframe src='data:application/pdf;base64,{encoded}' width='100%' height='800' type='application/pdf'></iframe>"
+                    st.markdown("### PDF Preview")
+                    st.markdown(pdf_display, unsafe_allow_html=True)
+
+                    # 3) Button download PDF
+                    st.download_button(
+                        label="📥 Download PDF Report",
+                        data=session['report_pdf_bytes'],
+                        file_name="report_distribution.pdf",
+                        mime="application/pdf"
+                    )
+
+                # 4) Button download HTML (available if html content present)
+                if session.get('report_html_content'):
+                    st.download_button(
+                        label="📥 Download HTML Report",
+                        data=session['report_html_content'].encode('utf-8'),
+                        file_name="report_distribution.html",
+                        mime="text/html"
+                    )
 
 
 # Avvio applicazione

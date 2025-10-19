@@ -11,6 +11,14 @@ import time
 # ─────────────────────────────────────────────
 session = st.session_state
 
+# -----------------------------
+# ORGANIZZAZIONE DELLA PAGINA
+# -----------------------------
+# Funzioni principali e scopi (in italiano):
+# 1) callback_upload -> USATA: file_uploader callback; SCOPO: salva file in sessione e temp path
+# 2) load_ifc_file -> USATA: helper; SCOPO: ricarica il file IFC dal temp path
+# 3) main -> USATA: entry point della pagina; SCOPO: interfaccia upload e rimozione file
+
 # ─────────────────────────────────────────────
 # 📤 Callback per caricamento file
 # ─────────────────────────────────────────────

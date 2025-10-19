@@ -1,10 +1,28 @@
-from email.policy import default
+# ─────────────────────────────────────────────
+# 📦 Importazioni
+# ─────────────────────────────────────────────
+import ifcopenshell as ifc
 import streamlit as st
 from tools import ifchelper
 from tools import graph_maker
 from datetime import datetime
-import ifcopenshell as ifc
+from email.policy import default
 
+# -----------------------------
+# ORGANIZZAZIONE DELLA PAGINA
+# -----------------------------
+# Elenco funzioni/aree (in italiano):
+# 1) initialize_session_state -> USATA: esecuzione pagina; SCOPO: inizializza stato
+# 2) load_cost_schedules -> USATA: Schedules tab; SCOPO: carica cost schedules
+# 3) add_cost_schedule -> USATA: sidebar; SCOPO: crea cost schedule
+# 4) draw_schedules -> USATA: Schedules tab; SCOPO: mostra cost schedules
+# 5) draw_side_bar -> USATA: sidebar; SCOPO: controlli cost scheduler e save
+# 6) debug helpers -> USATA: Debug tab; SCOPO: ispezione oggetti
+# 7) execute -> USATA: entry point
+
+# ─────────────────────────────────────────────
+# 🧠 Alias per lo stato della sessione Streamlit
+# ─────────────────────────────────────────────
 session = st.session_state # Alias for session state
 
 def initialize_session_state():
