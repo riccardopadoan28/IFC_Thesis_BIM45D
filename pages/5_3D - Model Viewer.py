@@ -8,6 +8,9 @@ import streamlit.components.v1 as components
 from pathlib import Path
 from typing import Optional
 from tools import ifchelper
+import threading
+import http.server
+import socketserver
 
 
 # ─────────────────────────────────────────────
@@ -31,9 +34,32 @@ session = st.session_state
 # ─────────────────────────────────────────────
 # Percorso assoluto alla build del frontend (React/JS)
 frontend_dir = (Path(__file__).parent.parent / "frontend-viewer" / "build").absolute()
-_component_func = components.declare_component(
-    "ifc_js_viewer", path=str(frontend_dir)
-)
+# Try to declare the custom component; fall back to a no-op stub if Streamlit raises RuntimeError
+try:
+    _component_func = components.declare_component("ifc_js_viewer", path=str(frontend_dir))
+except RuntimeError:
+    # Fallback stub when Streamlit cannot determine module name (prevents crash in some runtimes)
+    def _component_func(url: Optional[str] = None):
+        return ""
+
+# Helper to start a simple HTTP server to serve the build folder so the frontend can fetch the IFC file
+def start_static_server(directory: Path, port: int = 8502):
+    if session.get("static_server_started"):
+        return True
+    try:
+        # Allow address reuse to reduce chance of bind errors
+        socketserver.TCPServer.allow_reuse_address = True
+        handler = lambda *args, **kwargs: http.server.SimpleHTTPRequestHandler(*args, directory=str(directory), **kwargs)
+        httpd = socketserver.TCPServer(("", port), handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        session["static_server_started"] = True
+        session["static_server_httpd"] = httpd
+        return True
+    except OSError:
+        # Port likely in use; assume an external server is already running
+        session["static_server_started"] = True
+        return False
 
 def ifc_js_viewer(url: Optional[str] = None):
     """
@@ -55,13 +81,29 @@ def draw_3d_viewer():
         # Salva sempre il file IFC (sovrascrive)
         with open(output_path, "wb") as f:
             f.write(session["ifc_file"].to_string().encode("utf-8"))
-        # Passa l'URL del server statico al componente custom
-        url = "http://localhost:8502/temp_model.ifc"
-        session.ifc_js_response = ifc_js_viewer(url)
-        st.sidebar.success("Visualiser loaded")
-        st.sidebar.info("Avvia il server statico: python -m http.server 8502 nella cartella frontend-viewer/build")
+        # Start a local static server to serve the IFC file (avoids requiring the user to run a separate server)
+        server_started = start_static_server(output_dir, port=8502)
+        model_url = "http://localhost:8502/temp_model.ifc"
+        viewer_index_url = "http://localhost:8502/index.html"
+
+        # Show server status on the main page before the viewer
+        st.success("Visualiser loaded")
+        if server_started:
+            st.success(f"Static server running at {viewer_index_url}")
+        else:
+            st.warning("Could not start static server on port 8502 (port in use). Ensure an external server can serve temp_model.ifc at http://localhost:8502/temp_model.ifc")
+
+        # Render the viewer in a dedicated container below the status messages
+        viewer_container = st.container()
+        with viewer_container:
+            # Pass model URL to the custom component (if available)
+            component_resp = ifc_js_viewer(model_url)
+            session.ifc_js_response = component_resp
+            # If the custom component is not available (stub), show the frontend index.html in an iframe
+            if not component_resp:
+                components.html(f'<iframe src="{viewer_index_url}" style="width:100%;height:720px;border:none"></iframe>', height=720)
     else:
-        st.sidebar.warning("No IFC file loaded.")
+        st.warning("No IFC file loaded.")
 
 # ─────────────────────────────────────────────
 # 📦 Recupera i property set dal viewer IFC.js
