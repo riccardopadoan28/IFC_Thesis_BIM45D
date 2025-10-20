@@ -741,4 +741,67 @@ def export_ifc_as_csv_bytes(model=None, df=None):
 
     return None
 
+
+# ==========================================================
+# Additional helper: full properties DataFrame extraction (used by Page 6)
+# Where used: pages/6_Properties and Quantities.py
+# This function orchestrates extraction for a set of structural classes based on schema.
+# ==========================================================
+
+def get_ifc_pandas(model, schema=None):
+    """
+    Orchestrates extraction of IFC objects for a set of target classes and returns a
+    concatenated pandas DataFrame with properties and quantities expanded.
+
+    - model: opened ifcopenshell model
+    - schema: optional string like 'IFC4X3' to select class list
+
+    Usage: called by pages/6 to populate session DataFrame.
+    """
+    schema_name = (schema or '').upper()
+
+    classes_by_schema = {
+        "IFC2X3": [
+            "IfcBeam", "IfcColumn", "IfcSlab", "IfcWall", "IfcWallStandardCase",
+            "IfcFooting", "IfcMember", "IfcReinforcingBar", "IfcReinforcingMesh",
+            "IfcTendon", "IfcTendonAnchor", "IfcStructuralConnection",
+            "IfcStructuralCurveMember", "IfcStructuralSurfaceMember",
+            "IfcRamp", "IfcStair"
+        ],
+        "IFC4": [
+            "IfcBeam", "IfcColumn", "IfcSlab", "IfcWall", "IfcWallStandardCase",
+            "IfcFooting", "IfcMember", "IfcReinforcingBar", "IfcReinforcingMesh",
+            "IfcTendon", "IfcTendonAnchor", "IfcStructuralConnection",
+            "IfcStructuralCurveMember", "IfcStructuralSurfaceMember",
+            "IfcRamp", "IfcStair"
+        ],
+        "IFC4X3": [
+            "IfcBeam", "IfcColumn", "IfcSlab", "IfcWall", "IfcWallStandardCase",
+            "IfcFooting", "IfcMember", "IfcReinforcingBar", "IfcReinforcingMesh",
+            "IfcTendon", "IfcTendonAnchor", "IfcStructuralConnection",
+            "IfcStructuralCurveMember", "IfcStructuralSurfaceMember",
+            "IfcRamp", "IfcStair", "IfcBearing"
+        ]
+    }
+
+    target_classes = classes_by_schema.get(schema_name, classes_by_schema['IFC4'])
+    dfs = []
+
+    for cls in target_classes:
+        try:
+            data, pset_attrs = get_objects_data_by_class(model, cls)
+            df = create_pandas_dataframe(data, pset_attrs)
+            if df is not None and not df.empty:
+                df['Class'] = cls
+                dfs.append(df)
+        except Exception:
+            # non-fatal: continue with other classes
+            continue
+
+    if not dfs:
+        return pd.DataFrame()
+
+    df_all = pd.concat(dfs, ignore_index=True)
+    return df_all
+
 # End of module

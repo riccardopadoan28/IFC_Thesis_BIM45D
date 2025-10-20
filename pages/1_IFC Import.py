@@ -5,6 +5,9 @@ import ifcopenshell as ifc
 import streamlit as st
 import os
 import time
+import subprocess
+import base64
+from pathlib import Path
 
 # ─────────────────────────────────────────────
 # 🧠 Alias per lo stato della sessione Streamlit
