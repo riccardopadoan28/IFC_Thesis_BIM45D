@@ -10,7 +10,6 @@ import numpy as np
 import base64
 import ifcopenshell as ifc
 from tools import ifchelper, pandashelper, graph_maker
-from tools.ifchelper import get_ifc_quantities
 
 # Import helpers
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -43,7 +42,7 @@ def initialize_session_state():
 # ----------------------------------------------------
 def load_data():
     if "ifc_file" not in session or session["ifc_file"] is None:
-        st.warning("⚠️ Please upload an IFC file first in the sidebar.")
+        st.warning("⚠️ Please upload an IFC file first.")
         return pandashelper.create_empty_dataframe()
 
     session["Classes"] = []
@@ -64,7 +63,7 @@ def load_data():
 def load_quantities():
     session["Classes"] = []
     ifc_file = session.get("ifc_file")   # recupera il file IFC dalla sessione
-    df = get_ifc_quantities(ifc_file)    # passa il file come argomento
+    df = ifchelper.get_ifc_quantities(ifc_file)    # passa il file come argomento
 
     session["QuantitiesFrame"] = df
 
@@ -132,76 +131,29 @@ def get_ifc_pandas():
         return pandashelper.create_empty_dataframe()
 
 # ----------------------------------------------------
-# Estrae i Quantities dal file IFC e costruisce DataFrame
-# ----------------------------------------------------
-def get_ifc_quantities(model) -> pd.DataFrame:
-    """
-    Estrae tutte le Quantity Sets (Qto) dal modello IFC e le restituisce in un DataFrame.
-
-    Colonne principali:
-    - GlobalId
-    - Class
-    - Type
-    - Level
-    - Qto_XXX.Quantity
-    """
-    records = []
-
-    for element in model.by_type("IfcProduct"):
-        # Evita entità senza rappresentazione geometrica
-        if not hasattr(element, "IsDefinedBy"):
-            continue
-
-        row = {
-            "GlobalId": element.GlobalId,
-            "Class": element.is_a(),
-            "Type": None,
-            "Level": None,
-        }
-
-        # Tipo (se disponibile)
-        if hasattr(element, "ObjectType") and element.ObjectType:
-            row["Type"] = str(element.ObjectType)
-
-        # Level (If RelatingObject -> IfcBuildingStorey)
-        try:
-            for rel in getattr(element, "ContainedInStructure", []):
-                if rel.RelatingStructure.is_a("IfcBuildingStorey"):
-                    row["Level"] = rel.RelatingStructure.Name
-        except:
-            pass
-
-        # Leggo tutte le quantità nei Qto
-        try:
-            psets = ifc.util.element.get_psets(element, qtos_only=True)
-            for qset, quantities in psets.items():
-                for qname, qvalue in quantities.items():
-                    row[f"{qset}.{qname}"] = qvalue
-        except:
-            continue
-
-        records.append(row)
-
-    if not records:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(records)
-
-    # Riordino le colonne (alfabetico dopo quelle principali)
-    base_cols = ["GlobalId", "Class", "Type", "Level"]
-    other_cols = sorted([c for c in df.columns if c not in base_cols])
-    df = df[base_cols + other_cols]
-
-    return df
-
-# ----------------------------------------------------
 # Funzioni di download del DataFrame
 # ----------------------------------------------------
+# CSV export implementation moved to tools.ifchelper.export_ifc_as_csv_bytes (uses ifcopenshell CSV exporter when available)
+
 def download_csv():
-    pandashelper.download_csv(session["file_name"], session["QuantitiesFrame"])
+    """Return CSV bytes using helper implementation in tools.ifchelper."""
+    model = session.get('ifc_file')
+    df = session.get('DataFrame')
+    csv_bytes = None
+    try:
+        csv_bytes = ifchelper.export_ifc_as_csv_bytes(model=model, df=df)
+    except Exception:
+        csv_bytes = None
+
+    if csv_bytes:
+        return csv_bytes
+    else:
+        st.error('Unable to generate CSV (see logs).')
+        return None
+
 
 def download_excel():
-    pandashelper.download_excel(session["file_name"], session["QuantitiesFrame"])
+    pandashelper.download_excel(session.get('file_name'), session.get('QuantitiesFrame'))
 
 
 # ----------------------------------------------------
@@ -401,7 +353,7 @@ def execute():
                     st.warning("⚠️ No IFC file loaded yet.")
                 else:
                     # Carica le quantità dal modello IFC
-                    qto_df = get_ifc_quantities(session["ifc_file"])
+                    qto_df = ifchelper.get_ifc_quantities(session["ifc_file"])
 
                     if qto_df.empty:
                         st.warning("⚠️ Quantities DataFrame is empty.")

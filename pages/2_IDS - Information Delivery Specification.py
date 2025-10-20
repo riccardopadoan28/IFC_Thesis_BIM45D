@@ -13,6 +13,8 @@ from fpdf import FPDF
 import textwrap
 import re
 from tools import ifchelper
+# Import validate function from helper (moved to tools.ifchelper to centralize IFC logic)
+from tools.ifchelper import validate_ifc_with_ids
 
 # ─────────────────────────────────────────────
 # 🧠 Alias per lo stato della sessione Streamlit
@@ -33,36 +35,104 @@ session = st.session_state
 # ─────────────────────────────────────────────
 def validate_ifc_with_ids(ifc_file, ids_rules):
     """
-    Valida un modello IFC rispetto alle regole IDS.
+    Valida un modello IFC rispetto alle regole IDS usando l'API ufficiale ifcopenshell.
     Restituisce un DataFrame Pandas con:
     ElementID, ElementName, IFCClass, PropertySet, PropertyName, Value, Compliant
     """
     import pandas as pd
+    import ifcopenshell
+    from ifcopenshell.util import element as ifc_element
+
     results = []
 
-    for rule in ids_rules:
-        class_name = rule["ifc_class"]
-        # Estrai i dati dell'IFC tramite ifchelper
-        objects_data, _ = ifchelper.get_objects_data_by_class(ifc_file, class_name)
+    # Accept either an opened model or a file path
+    try:
+        model = ifc_file if hasattr(ifc_file, "by_type") else ifcopenshell.open(ifc_file)
+    except Exception:
+        # fallback: if opening fails, try treating as already-opened model
+        model = ifc_file
 
-        if not objects_data:
+    for rule in ids_rules:
+        class_name = rule.get("ifc_class")
+        if not class_name:
+            continue
+
+        try:
+            elements = model.by_type(class_name) or []
+        except Exception:
+            elements = []
+
+        if not elements:
             continue  # nessun oggetto di questa classe
 
-        for obj_data in objects_data:
-            for prop_rule in rule["properties"]:
-                pset_name = prop_rule["property_set"]
-                prop_name = prop_rule["property_name"]
+        for obj in elements:
+            # get property sets using official util
+            try:
+                psets = ifc_element.get_psets(obj) or {}
+            except Exception:
+                psets = {}
+
+            for prop_rule in rule.get("properties", []):
+                pset_name = prop_rule.get("property_set", "")
+                prop_name = prop_rule.get("property_name", "")
                 mandatory = prop_rule.get("mandatory", False)
 
-                # Usa ifchelper.get_attribute_value per leggere i valori reali
-                attr = f"{pset_name}.{prop_name}"
-                val = ifchelper.get_attribute_value(obj_data, attr)
+                val = None
 
-                is_valid = val is not None if mandatory else True
+                if pset_name:
+                    # look for the specified property set
+                    pset_props = psets.get(pset_name)
+                    if pset_props is not None:
+                        if prop_name == "ALL":
+                            val = pset_props
+                        else:
+                            val = pset_props.get(prop_name)
+                    else:
+                        # try case-insensitive match for PSet name
+                        for pn, props in psets.items():
+                            if pn.lower() == pset_name.lower():
+                                if prop_name == "ALL":
+                                    val = props
+                                else:
+                                    val = props.get(prop_name)
+                                pset_name = pn
+                                break
+                else:
+                    # no property set specified: search across all PSets
+                    for pn, props in psets.items():
+                        if prop_name == "ALL":
+                            val = props
+                            pset_name = pn
+                            break
+                        if prop_name in props:
+                            val = props.get(prop_name)
+                            pset_name = pn
+                            break
+
+                # final fallback: try direct attribute on the IFC entity
+                if val is None and prop_name and hasattr(obj, prop_name):
+                    try:
+                        val = getattr(obj, prop_name)
+                    except Exception:
+                        val = None
+
+                is_valid = (val is not None) if mandatory else True
+
+                # try to get a stable element identifier
+                element_id = None
+                if hasattr(obj, "GlobalId"):
+                    element_id = getattr(obj, "GlobalId", None)
+                elif hasattr(obj, "GlobalID"):
+                    element_id = getattr(obj, "GlobalID", None)
+                else:
+                    try:
+                        element_id = obj.id()
+                    except Exception:
+                        element_id = None
 
                 results.append({
-                    "ElementID": obj_data["GlobalId"],
-                    "ElementName": obj_data.get("Name") or "(Unnamed)",
+                    "ElementID": element_id,
+                    "ElementName": getattr(obj, "Name", None) or "(Unnamed)",
                     "IFCClass": class_name,
                     "PropertySet": pset_name,
                     "PropertyName": prop_name,

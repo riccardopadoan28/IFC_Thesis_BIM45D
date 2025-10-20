@@ -6,7 +6,10 @@ import json
 import textwrap
 import re
 import io
-from fpdf import FPDF
+import zipfile
+import uuid
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
 
 # ─────────────────────────────────────────────
 # 🧠 Alias per lo stato della sessione Streamlit
@@ -96,45 +99,72 @@ else:
         st.subheader("Selected Issues (preview)")
         st.dataframe(selected_df, use_container_width=True)
 
-        # Download buttons for report artifacts
-        summary_csv = summary.to_csv(index=False).encode('utf-8')
-        st.download_button("Download Summary CSV", summary_csv, "report_summary.csv", "text/csv")
-
+        # Only two export buttons: Full Report (HTML) and .bcfzip
         combined_html = f"<h1>{report_title}</h1><p><strong>Author:</strong> {report_author}</p><p><strong>Project:</strong> {report_project}</p><p><strong>Date:</strong> {report_date}</p>"
         if include_summary:
             combined_html += summary.to_html(index=False)
         combined_html += selected_df.to_html(index=False)
 
+        # Button: Full HTML report
         st.download_button("Download Full Report (HTML)", combined_html.encode('utf-8'), "report_full.html", "text/html")
 
-        # HTML export (separate full issues table)
-        html_report = selected_df.to_html(index=False, border=0)
-        st.download_button("Export HTML", html_report.encode('utf-8'), "bcf_issues.html", "text/html")
-
-        # BCF (.bcf) export - simple BCF-like XML serialization of selected issues
+        # Button: Export .bcfzip (minimal BCF archive)
         try:
-            import xml.etree.ElementTree as ET
-            from xml.dom import minidom
+            # Helper to build a simple markup.bcf XML for a topic
+            def build_markup_xml(topic_id, title, description, author, date_str, fields):
+                root = ET.Element('Markup')
+                topic = ET.SubElement(root, 'Topic')
+                ET.SubElement(topic, 'Guid').text = topic_id
+                ET.SubElement(topic, 'Title').text = title
+                ET.SubElement(topic, 'Description').text = description
+                ET.SubElement(topic, 'CreationAuthor').text = author
+                ET.SubElement(topic, 'CreationDate').text = date_str
 
-            bcf_root = ET.Element('BCFMarkup')
-            meta = ET.SubElement(bcf_root, 'Metadata')
-            ET.SubElement(meta, 'Title').text = str(report_title if 'report_title' in locals() else '')
-            ET.SubElement(meta, 'Author').text = str(report_author if 'report_author' in locals() else '')
-            ET.SubElement(meta, 'Project').text = str(report_project if 'report_project' in locals() else '')
-            ET.SubElement(meta, 'Date').text = str(report_date if 'report_date' in locals() else '')
+                custom_data = ET.SubElement(topic, 'CustomData')
+                for k, v in fields.items():
+                    cd = ET.SubElement(custom_data, 'Field')
+                    ET.SubElement(cd, 'Name').text = str(k)
+                    ET.SubElement(cd, 'Value').text = '' if v is None else str(v)
 
-            topics = ET.SubElement(bcf_root, 'Topics')
-            cols = list(selected_df.columns)
-            for i, row in selected_df.iterrows():
-                topic = ET.SubElement(topics, 'Topic', {'id': str(i)})
-                for c in cols:
-                    child = ET.SubElement(topic, re.sub(r"[^0-9a-zA-Z_]", "_", str(c)))
-                    child.text = '' if row[c] is None else str(row[c])
+                raw = ET.tostring(root, encoding='utf-8')
+                return minidom.parseString(raw).toprettyxml(indent='  ')
 
-            bcf_bytes = ET.tostring(bcf_root, encoding='utf-8')
-            pretty_bcf = minidom.parseString(bcf_bytes).toprettyxml(indent='  ')
-            st.download_button("Export .bcf", pretty_bcf.encode('utf-8'), "report_issues.bcf", "application/xml")
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, mode='w', compression=zipfile.ZIP_DEFLATED) as z:
+                topic_ids = []
+                cols = list(selected_df.columns)
+                for _, row in selected_df.reset_index(drop=True).iterrows():
+                    tid = str(uuid.uuid4())
+                    topic_ids.append(tid)
+                    title = str(row.get('ElementName', 'Issue'))
+                    description = f"Issue for ElementID: {row.get('ElementID', '')}\nIFCClass: {row.get('IFCClass', '')}\nProperty: {row.get('PropertyName', '')}\nValue: {row.get('Value', '')}"
+                    fields = {c: row[c] for c in cols}
+                    markup_xml = build_markup_xml(tid, title, description, report_author, str(report_date), fields)
+                    topic_folder = f"topics/{tid}/"
+                    z.writestr(topic_folder + 'markup.bcf', markup_xml.encode('utf-8'))
+
+                project_root = ET.Element('BCFProject')
+                ET.SubElement(project_root, 'Title').text = str(report_title)
+                ET.SubElement(project_root, 'ProjectID').text = str(uuid.uuid4())
+                ET.SubElement(project_root, 'Author').text = str(report_author)
+                ET.SubElement(project_root, 'Project').text = str(report_project)
+                ET.SubElement(project_root, 'Date').text = str(report_date)
+
+                topics_el = ET.SubElement(project_root, 'Topics')
+                for tid in topic_ids:
+                    t = ET.SubElement(topics_el, 'Topic')
+                    ET.SubElement(t, 'Guid').text = tid
+                    ET.SubElement(t, 'MarkupFile').text = f"topics/{tid}/markup.bcf"
+
+                project_raw = ET.tostring(project_root, encoding='utf-8')
+                project_pretty = minidom.parseString(project_raw).toprettyxml(indent='  ')
+                z.writestr('project.bcfp', project_pretty.encode('utf-8'))
+
+            zip_buffer.seek(0)
+            bcfzip_bytes = zip_buffer.read()
+            st.download_button("Export .bcfzip", bcfzip_bytes, "report_issues.bcfzip", "application/zip")
+
         except Exception as e:
-            st.error(f"Error generating .bcf file: {e}")
+            st.error(f"Error generating .bcfzip file: {e}")
     else:
         st.info("Select at least one issue to enable exports.")
