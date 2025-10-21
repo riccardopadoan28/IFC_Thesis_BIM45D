@@ -1,20 +1,20 @@
 # ─────────────────────────────────────────────
 # 📦 Importazioni
 # ─────────────────────────────────────────────
-import streamlit as st
-import json
-import pandas as pd
-import plotly.express as px
-import io
-import zipfile
-import tempfile
-from datetime import datetime
-from fpdf import FPDF
-import textwrap
-import re
-from tools import ifchelper
+import streamlit as st  # UI e layout dell'app
+import json  # lettura/scrittura file IDS/Config
+import pandas as pd  # tabelle risultati e aggregazioni
+import plotly.express as px  # grafici di conformità
+import io  # buffer file (supporto ad esportazioni)
+import zipfile  # pacchetti BCF (altra pagina)
+import tempfile  # gestione file temporanei
+from datetime import datetime  # timestamp in XML e report
+from fpdf import FPDF  # report PDF (altra pagina)
+import textwrap  # formattazione testi per report PDF
+import re  # semplici controlli/normalizzazioni testuali
+from tools import ifchelper  # helper IFC condivisi
 # Import validate function from helper (moved to tools.ifchelper to centralize IFC logic)
-from tools.ifchelper import validate_ifc_with_ids
+from tools.ifchelper import validate_ifc_with_ids  # validazione IFC rispetto alle regole IDS
 
 # ─────────────────────────────────────────────
 # 🧠 Alias per lo stato della sessione Streamlit
@@ -431,26 +431,31 @@ with tab3:
 # Tab 4: Automatic IDS Test
 # ─────────────────────────────────────────────
 with tab_xml:
-    st.markdown("This tab allows you to upload IDS or export-configuration JSON files for automated testing. Test results are stored and can be exported from the 'BCF / Reports' tab.")
-    st.subheader("🧪 Test IDS on IFC File")
+    st.markdown("This tab lets you automatically test an IFC file against IDS rules loaded from a file.")
+    st.subheader("🧪 Test IDS on IFC file")
 
     st.info(
-        "ℹ️ You can upload either:\n"
-        "- **IDS JSON**: exported from the IDS page, containing explicit `properties` per rule.\n"
-        "- **Export Configuration JSON**: exported from the Export Configuration page. "
-        "Rules will be automatically normalized for testing.\n\n"
-        "✅ Both formats are supported."
+        "What you can upload:\n"
+        "- IDS XML compliant with buildingSMART.\n"
+        "- IDS JSON exported from this page.\n"
+        "- Export Configuration JSON (it will be normalized into IDS rules).\n\n"
+        "What you get:\n"
+        "- clear summary of loaded rules (specifications/properties count, involved classes);\n"
+        "- results table sorted with non-compliant first;\n"
+        "- concise metrics and compliance-by-class chart;\n"
+        "- CSV download of results."
     )
 
     uploaded_ids = st.file_uploader(
-        "Upload IDS JSON or Export Configuration JSON or IDS XML",
+        "Upload IDS JSON / Export Configuration JSON / IDS XML",
         type=["json", "xml"],
         key="upload_ids"
     )
+
     test_ids = None
     if uploaded_ids is not None:
         try:
-            # Try to parse as XML first
+            # Try as XML first
             content = uploaded_ids.read()
             parsed_xml = None
             try:
@@ -460,27 +465,21 @@ with tab_xml:
                 parsed_xml = None
 
             if parsed_xml is not None:
-                # Parse IDS XML into internal rule format
+                # Parse IDS XML into internal format
                 ns = {
                     'ids': 'http://standards.buildingsmart.org/IDS',
                     'xs': 'http://www.w3.org/2001/XMLSchema'
                 }
                 test_ids = []
-                # find specification elements (any namespace prefix)
-                specs = parsed_xml.findall('.//{http://standards.buildingsmart.org/IDS}specification')
-                if not specs:
-                    # try without namespace
-                    specs = parsed_xml.findall('.//specification')
+                specs = parsed_xml.findall('.//{http://standards.buildingsmart.org/IDS}specification') or parsed_xml.findall('.//specification')
 
                 for spec in specs:
-                    # extract IFC class from applicability simpleValue
                     ifc_class = ''
                     appl = spec.find('.//{http://standards.buildingsmart.org/IDS}applicability') or spec.find('.//applicability')
                     if appl is not None:
                         sv = appl.find('.//{http://standards.buildingsmart.org/IDS}simpleValue') or appl.find('.//simpleValue')
                         if sv is not None and sv.text:
                             ifc_class = sv.text.strip()
-                    # fallback: use specification name or empty
                     if not ifc_class:
                         ifc_class = spec.get('name', '').replace('Requirement for ', '')
 
@@ -491,30 +490,21 @@ with tab_xml:
                         mandatory = False
                         allowed_vals = None
 
-                        # cardinality attribute
                         card = prop_el.get('cardinality')
                         if card and card.lower().startswith('required'):
                             mandatory = True
 
-                        # propertySet/simpleValue
-                        pset_el = prop_el.find('.//{http://standards.buildingsmart.org/IDS}propertySet/{http://standards.buildingsmart.org/IDS}simpleValue')
-                        if pset_el is None:
-                            pset_el = prop_el.find('.//propertySet/simpleValue')
+                        pset_el = prop_el.find('.//{http://standards.buildingsmart.org/IDS}propertySet/{http://standards.buildingsmart.org/IDS}simpleValue') or prop_el.find('.//propertySet/simpleValue')
                         if pset_el is not None and pset_el.text:
                             pset = pset_el.text.strip()
 
-                        # baseName/simpleValue
-                        base_el = prop_el.find('.//{http://standards.buildingsmart.org/IDS}baseName/{http://standards.buildingsmart.org/IDS}simpleValue')
-                        if base_el is None:
-                            base_el = prop_el.find('.//baseName/simpleValue')
+                        base_el = prop_el.find('.//{http://standards.buildingsmart.org/IDS}baseName/{http://standards.buildingsmart.org/IDS}simpleValue') or prop_el.find('.//baseName/simpleValue')
                         if base_el is not None and base_el.text:
                             pname = base_el.text.strip()
 
-                        # allowed values via xs:restriction/xs:enumeration
                         allowed = []
                         val_block = prop_el.find('.//{http://standards.buildingsmart.org/IDS}value') or prop_el.find('.//value')
                         if val_block is not None:
-                            # look for xs:restriction inside
                             restr = val_block.find('.//{http://www.w3.org/2001/XMLSchema}restriction') or val_block.find('.//restriction')
                             if restr is not None:
                                 enums = restr.findall('.//{http://www.w3.org/2001/XMLSchema}enumeration') or restr.findall('.//enumeration')
@@ -535,27 +525,27 @@ with tab_xml:
                     test_ids.append({'ifc_class': ifc_class, 'properties': props})
 
                 if test_ids:
-                    st.success("✅ IDS XML parsed and normalized successfully")
+                    n_specs = len(test_ids)
+                    n_props = sum(len(r.get('properties', [])) for r in test_ids)
+                    classes = sorted({r.get('ifc_class', '') for r in test_ids if r.get('ifc_class')})
+                    preview = ", ".join(classes[:8]) + ("…" if len(classes) > 8 else "")
+                    st.success(f"✅ IDS XML loaded: {n_specs} specifications, {n_props} properties. Classes: {preview}")
                 else:
-                    st.error("❌ No valid specifications found in the uploaded IDS XML.")
+                    st.error("❌ No valid 'specification' found in the uploaded IDS XML.")
 
             else:
-                # Not XML: try JSON parsing (fallback)
+                # Not XML: try as JSON
                 uploaded_ids.seek(0)
                 loaded_json = json.load(uploaded_ids)
 
-                # Determina se è Export Configuration o IDS list
                 if isinstance(loaded_json, dict) and "ExportRules" in loaded_json:
                     raw_rules = loaded_json["ExportRules"]
                 elif isinstance(loaded_json, list):
                     raw_rules = loaded_json
                 else:
-                    st.error(
-                        "❌ JSON has invalid structure. Must be IDS list or Export Configuration with 'ExportRules'."
-                    )
+                    st.error("❌ Invalid JSON structure. Expected an IDS list or an object with 'ExportRules'.")
                     raw_rules = []
 
-                # Trasforma tutte le regole in formato IDS
                 test_ids = []
                 for rule in raw_rules:
                     if "properties" in rule:
@@ -581,38 +571,63 @@ with tab_xml:
                         })
 
                 if test_ids:
-                    st.success("✅ IDS JSON loaded and normalized successfully")
+                    n_specs = len(test_ids)
+                    n_props = sum(len(r.get('properties', [])) for r in test_ids)
+                    classes = sorted({r.get('ifc_class', '') for r in test_ids if r.get('ifc_class')})
+                    preview = ", ".join(classes[:8]) + ("…" if len(classes) > 8 else "")
+                    st.success(f"✅ IDS JSON loaded: {n_specs} specifications, {n_props} properties. Classes: {preview}")
 
         except Exception as e:
-            st.error(f"❌ Error reading uploaded file: {e}")
+            st.error(f"❌ Error reading the uploaded file: {e}")
             test_ids = None
 
-    # Run validation if IFC model and parsed rules are available
+    # Run validation and show clearer outputs
     if ifc_model and test_ids:
         df_test = validate_ifc_with_ids(ifc_model, test_ids)
-        # salva l'ultimo risultato di validazione in sessione per l'esportazione
         session.ids_last_validation_df = df_test
-        st.subheader("✅ IDS Test Results")
-        st.dataframe(df_test, use_container_width=True)
 
-        compliance_rate_test = df_test["Compliant"].mean() * 100
-        st.metric("Compliance Rate", f"{compliance_rate_test:.1f}%")
+        # Sort: non-compliant first, then by class/pset/property
+        try:
+            df_view = df_test.sort_values(["Compliant", "IFCClass", "PropertySet", "PropertyName"])  # False < True
+        except Exception:
+            df_view = df_test
 
-        chart_test = df_test.groupby("IFCClass")["Compliant"].mean().reset_index()
-        chart_test["Compliant"] = chart_test["Compliant"] * 100
-        fig_test = px.bar(
-            chart_test, x="IFCClass", y="Compliant", color="Compliant",
-            color_continuous_scale="RdYlGn",
-            title="Compliance per IFC Class (%)"
+        st.subheader("✅ IDS test results")
+        st.dataframe(df_view, use_container_width=True)
+
+        total = len(df_view)
+        fails = int((~df_view["Compliant"]).sum()) if "Compliant" in df_view.columns else 0
+        passes = total - fails
+        missing = int((df_view["Value"].isnull() & (~df_view["Compliant"])).sum()) if "Value" in df_view.columns and "Compliant" in df_view.columns else 0
+        invalid = fails - missing
+
+        st.markdown(
+            f"- Total checks: **{total}**\n"
+            f"- Compliant: **{passes}**\n"
+            f"- Non-compliant: **{fails}** (missing: {missing}, disallowed values: {invalid})"
         )
-        st.plotly_chart(fig_test, use_container_width=True)
 
-        csv_test = df_test.to_csv(index=False)
-        st.download_button("💾 Export Test Results CSV", csv_test, "ids_test_results.csv", "text/csv")
+        compliance_rate_test = df_view["Compliant"].mean() * 100 if "Compliant" in df_view.columns else 0.0
+        st.metric("Compliance rate", f"{compliance_rate_test:.1f}%")
+
+        chart_test = df_view.groupby("IFCClass")["Compliant"].mean().reset_index() if "Compliant" in df_view.columns else pd.DataFrame()
+        if not chart_test.empty:
+            chart_test["Compliant"] = chart_test["Compliant"] * 100
+            fig_test = px.bar(
+                chart_test,
+                x="IFCClass",
+                y="Compliant",
+                color="Compliant",
+                color_continuous_scale="RdYlGn",
+                title="Compliance by IFC class (%)"
+            )
+            st.plotly_chart(fig_test, use_container_width=True)
+
+        csv_test = df_view.to_csv(index=False)
+        st.download_button("💾 Download results CSV", csv_test, "ids_test_results.csv", "text/csv")
     else:
-        st.info(
-            "👈 Upload IDS XML/JSON to run the test; IFC file must be loaded in Home."
-        )
+        st.info("Upload an IDS file (XML/JSON) and make sure an IFC file is loaded in Home to run the test.")
+
 # ─────────────────────────────────────────────
 # Tab 4: moved to a dedicated page
 # The BCF / Reports tab has been moved to: pages/1_BIM Collaboration Specification.py

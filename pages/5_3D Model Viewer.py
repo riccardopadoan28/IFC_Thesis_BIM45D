@@ -153,7 +153,7 @@ st.subheader("Viewer")
 meta_model_url = st.text_input("metaModel JSON URL (optional)", "")
 
 xkt_b64 = session.get("last_xkt_b64", "")
-html_path = Path(__file__).resolve().parents[1] / "frontend-viewer" / "xeokit_xkt_viewer.html"
+html_path = Path(__file__).resolve().parent / "xeokit_xkt_viewer.html"
 if not html_path.exists():
     st.error(f"Template not found: {html_path}")
 else:

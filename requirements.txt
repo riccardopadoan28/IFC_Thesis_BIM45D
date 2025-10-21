@@ -1,11 +1,15 @@
+# Core dependencies used across current pages
 streamlit
 ifcopenshell
-matplotlib
-plotly
 pandas
-xlsxwriter
+numpy
+plotly
 fpdf2
-reportlab
-kaleido
-streamlit-3d
-pip install cors-server 
+
+# Optional dependencies (uncomment if used elsewhere in your app/helpers)
+# streamlit-3d
+# xlsxwriter
+# reportlab
+# kaleido
+# matplotlib
+# cors-server
