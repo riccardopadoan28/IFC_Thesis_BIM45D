@@ -1,12 +1,9 @@
 # ─────────────────────────────────────────────
-# 📦 Importazioni
+# 📦 Importazioni (solo quelle necessarie)
 # ─────────────────────────────────────────────
 import ifcopenshell as ifc
 import streamlit as st
 from tools import ifchelper
-from tools import graph_maker
-from datetime import datetime
-from email.policy import default
 
 # ─────────────────────────────────────────────
 # 🧠 Alias per lo stato della sessione Streamlit
@@ -21,22 +18,24 @@ session = st.session_state
 # 2) load_work_schedules -> USATA: Tab 'Schedules'; SCOPO: carica IfcWorkSchedule e IfcTask dal file IFC
 # 3) add_work_schedule -> USATA: Sidebar (Work Scheduler); SCOPO: crea una IfcWorkSchedule
 # 4) draw_schedules -> USATA: Tab 'Schedules'; SCOPO: mostra le schedule caricate e le attività correlate
-# 5) draw_side_bar -> USATA: Sidebar; SCOPO: controlli per creare schedule e salvare il file
-# 6) initialise_debug_props, get_object_data, edit_object_data -> USATA: Tab 'Debug'; SCOPO: ispezione e debug degli oggetti IFC
-# 7) execute -> USATA: entry point della pagina; SCOPO: costruisce l'interfaccia Streamlit e coordina le tab
+# 5) Funzioni di debug (initialise_debug_props, get_object_data, edit_object_data) -> USATE: Tab 'Debug'; SCOPO: ispezione e debug oggetti IFC
+# 6) execute -> ENTRY POINT: costruisce UI, tab e sidebar (output in inglese)
 
 def initialize_session_state():
+    """Inizializza lo stato di sessione usando chiavi note al resto della pagina."""
     session["isHealthDataLoaded"] = False
     session["HealthData"] = {}
     session["Graphs"] = {}
     session["SequenceData"] = {
-    "schedules": [],
-    "tasks": [],
-    "ScheduleData": []
-}
+        "schedules": [],
+        "tasks": [],
+        "ScheduleData": []
+    }
     session["CostScheduleData"] = {}
 
+
 def load_work_schedules():
+    """Carica le WorkSchedule e le Task dal file IFC nello stato di sessione."""
     session["SequenceData"]["schedules"] = session.ifc_file.by_type("IfcWorkSchedule")
     session["SequenceData"]["tasks"] = session.ifc_file.by_type("IfcTask")
     session["SequenceData"]["ScheduleData"] = [
@@ -44,11 +43,15 @@ def load_work_schedules():
         for schedule in session.ifc_file.by_type("IfcWorkSchedule")
     ]
 
+
 def add_work_schedule():
+    """Crea una nuova WorkSchedule con il nome inserito nella sidebar e ricarica i dati."""
     ifchelper.create_work_schedule(session.ifc_file, session["schedule_input"])
     load_work_schedules()
     
+
 def draw_schedules():
+    """Disegna la tabella delle schedule e delle task associate."""
     # Evita errori se SequenceData o schedules non sono presenti
     if "SequenceData" not in session or "schedules" not in session["SequenceData"]:
         st.warning("No schedule data available. Please load or create a schedule.")
@@ -71,19 +74,13 @@ def draw_schedules():
     else:
         st.warning("No schedules loaded")
 
-def draw_side_bar():    
-    def save_file():
-        session.ifc_file.write(session.file_name)
-    
-    ## Work Scheduler
-    st.sidebar.header("📅 Work Scheduler")
-    st.sidebar.text_input("✏️ Schedule Name", key="schedule_input")
-    st.sidebar.button("➕ Add Schedule", key="add_work_schedule_button", on_click=add_work_schedule)
 
-    ## File Saver
-    st.sidebar.button("💾 Save File", key="save_file", on_click=save_file)
+# ─────────────────────────────────────────────
+# 🔧 Funzioni di supporto al debug IFC
+# ─────────────────────────────────────────────
 
 def initialise_debug_props(force=False):
+    """Inizializza (o reimposta se force=True) le proprietà di debug IFC."""
     if not "BIMDebugProperties" in session:
         session.BIMDebugProperties = {
             "step_id": 0,
@@ -109,8 +106,11 @@ def initialise_debug_props(force=False):
             "express_file": None,
         }
 
+
 def get_object_data(fromId=None):
+    """Popola le proprietà di debug a partire da uno STEP id IFC."""
     def add_attribute(prop, key, value):
+        # Gestione tuple lunghe/corte per una migliore visualizzazione
         if isinstance(value, tuple) and len(value) < 10:
             for i, item in enumerate(value):
                 add_attribute(prop, key + f"[{i}]", item)
@@ -162,16 +162,26 @@ def get_object_data(fromId=None):
             
         print(debug_props["attributes"])
 
+
 def edit_object_data(object_id, attribute):
+    """Esempio di funzione per modificare un attributo (placeholder)."""
     entity = session.ifc_file.by_id(object_id)
     print(getattr(entity, attribute))
     
+
+# ─────────────────────────────────────────────
+# 🚀 Entry point della pagina
+# ─────────────────────────────────────────────
+
 def execute():
+    """Costruisce UI, tab e sidebar della pagina 4D (output in inglese)."""
     
+    # Inizializza proprieta' di debug
     initialise_debug_props()
+
+    # Intestazione e descrizione (output in inglese)
     st.header(" 📅 Project Timeline")
-    # Brief: This page manages the project timeline (4D) using IFC WorkSchedules, WorkPlans and IfcTasks.
-    # Use the selector and Schedule Manager to create, assign and review schedules and tasks linked to model elements.
+    # Brief: gestione timeline 4D con IFC WorkSchedules/WorkPlans/Tasks
     st.markdown(
         """
         This page manages the project timeline (4D) using IFC WorkSchedules, WorkPlans and IfcTasks. 
@@ -180,13 +190,15 @@ def execute():
     )
     st.markdown("Reference: [IFC4x3 Construction Scheduling - buildingSMART](https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE/IFC4x3/HTML/annex_e/construction-scheduling/construction-scheduling-task.html)")
 
+    # Garantisce che lo stato sia inizializzato
     if "isHealthDataLoaded" not in session or "SequenceData" not in session:
         initialize_session_state()
 
     if session.isHealthDataLoaded:
+        # Tabs principali (Debug e Schedules)
         tab1, tab2 = st.tabs(["🔎 Debug", "📝 Schedules"])
         
-        ## REPLICATE IFC DEBUG PANNEL
+        # Replica pannello di debug IFC
         with tab1:
             row1_col1, row1_col2 = st.columns([1,5])
             with row1_col1:
@@ -194,7 +206,7 @@ def execute():
                 st.button("Inspect from Object Id", key="get_object_button", on_click=get_object_data, args=(session.object_id,))
             if "BIMDebugProperties" in session and session.BIMDebugProperties:
                 props = session.BIMDebugProperties
-                ## DIRECT ATTRIBUTES
+                # Attributi diretti
                 if props["attributes"]:
                     st.subheader("Attributes")
                     for prop in props["attributes"]:
@@ -207,7 +219,7 @@ def execute():
                         else:
                             col2.text_input(label=prop["name"], key=prop["name"], value=prop["string_value"])
                 
-                ## INVERSE ATTRIBUTES           
+                # Attributi inversi          
                 if props["inverse_attributes"]:
                     st.subheader("Inverse Attributes")
                     for inverse in props["inverse_attributes"]:
@@ -217,7 +229,7 @@ def execute():
                         if inverse["int_value"]:
                             col3.button("Get Object", key=f'get_object_pop_button_{inverse["int_value"]}', on_click=get_object_data, args=(inverse["int_value"],))
 
-                ## INVERSE REFERENCES    
+                # Riferimenti inversi   
                 if props["inverse_references"]:
                     st.subheader("Inverse References")
                     for inverse in props["inverse_references"]:
@@ -225,11 +237,24 @@ def execute():
                         col1.text(inverse["string_value"])
                         if inverse["int_value"]:
                             col3.button("Get Object", key=f'get_object_pop_button_inverse_{inverse["int_value"]}', on_click=get_object_data, args=(inverse["int_value"],))
+        
+        # Tab Schedules
         with tab2:
             draw_schedules()
 
-        draw_side_bar()
+        # Sidebar integrata: Work Scheduler e salvataggio (output in inglese)
+        def save_file():
+            """Salva il file IFC corrente sul percorso noto in sessione."""
+            session.ifc_file.write(session.file_name)
+        
+        st.sidebar.header("📅 Work Scheduler")
+        st.sidebar.text_input("✏️ Schedule Name", key="schedule_input")
+        st.sidebar.button("➕ Add Schedule", key="add_work_schedule_button", on_click=add_work_schedule)
+        st.sidebar.button("💾 Save File", key="save_file", on_click=save_file)
     else:
+        # Istruzione iniziale quando nessun file è caricato (output in inglese)
         st.header("Step 1: Load a file from the Home Page")
 
+
+# Esegue la pagina
 execute()

@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual envs
+.venv/
+.env/
+
+# Streamlit
+.streamlit/
+
+# Local temp artifacts
+/temp/
+/downloads/
+/temp_downloads/
+/temp-download/
+
+# OS junk
+.DS_Store
+Thumbs.db

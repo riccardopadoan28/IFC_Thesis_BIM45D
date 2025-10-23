@@ -5,11 +5,7 @@ pandas
 numpy
 plotly
 fpdf2
+ifc4d
+ifc5d
 
-# Optional dependencies (uncomment if used elsewhere in your app/helpers)
-# streamlit-3d
-# xlsxwriter
-# reportlab
-# kaleido
-# matplotlib
-# cors-server
+

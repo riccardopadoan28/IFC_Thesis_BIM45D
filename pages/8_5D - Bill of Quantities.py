@@ -3,6 +3,7 @@
 # ─────────────────────────────────────────────
 import ifcopenshell as ifc
 import streamlit as st
+import ifc4d
 from tools import ifchelper
 from tools import graph_maker
 from datetime import datetime

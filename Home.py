@@ -3,6 +3,13 @@ import streamlit as st
 # Impostazioni della pagina
 st.set_page_config(page_title="Home", page_icon="🏠", layout="wide")
 
+# Auto-cleanup of legacy temp folders and caches at startup (no UI)
+try:
+    from tools.pathhelper import cleanup_all
+    cleanup_all(remove_static_temp=True, clean_caches=True)
+except Exception:
+    pass
+
 # --- SIDEBAR (rimane visibile in tutte le pagine) ---
 st.sidebar.title("Navigation")
 st.sidebar.write("Use the menu above to explore the app pages.")
