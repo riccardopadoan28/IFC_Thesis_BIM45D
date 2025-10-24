@@ -543,13 +543,39 @@ def list_work_calendars(model):
         return []
 
 
-def create_work_calendar(model, name: str | None = None, predefined_type: str = 'NOTDEFINED', description: str | None = None):
-    wc = None
+def create_work_calendar(model, name: str | None = None, predefined_type: str = "NOTDEFINED", description: str | None = None, object_type: str | None = None):
     try:
-        wc = model.create_entity('IfcWorkCalendar', Name=name, PredefinedType=predefined_type, Description=description)
+        # Enforce where-clause: if USERDEFINED then ObjectType must be set
+        if (predefined_type or "").upper() == "USERDEFINED" and not (object_type and object_type.strip()):
+            return None
+        wc = model.create_entity(
+            'IfcWorkCalendar',
+            Name=name,
+            Description=description,
+            PredefinedType=predefined_type,
+            ObjectType=(object_type or None),
+        )
+        return wc
     except Exception:
-        wc = None
-    return wc
+        return None
+
+
+def link_base_calendar(model, child_calendar_id: int, base_calendar_id: int) -> bool:
+    try:
+        child = model.by_id(int(child_calendar_id))
+        base = model.by_id(int(base_calendar_id))
+        if not child or not base:
+            return False
+        # Assign base calendar as controlling the child calendar
+        model.create_entity(
+            'IfcRelAssignsToControl',
+            GlobalId=new_guid(),
+            RelatingControl=base,
+            RelatedObjects=[child],
+        )
+        return True
+    except Exception:
+        return False
 
 
 def delete_work_calendar(model, calendar_id: int) -> bool:
@@ -563,23 +589,65 @@ def delete_work_calendar(model, calendar_id: int) -> bool:
         return False
 
 
-def add_calendar_time(model, calendar_id: int, name: str | None = None, start_iso: str | None = None, finish_iso: str | None = None, is_exception: bool = False) -> bool:
-    cal = model.by_id(int(calendar_id)) if calendar_id else None
-    if not cal:
-        return False
+def add_calendar_time(model, calendar_id: int, name: str | None, start_iso: str | None, finish_iso: str | None, is_exception: bool = False) -> bool:
     try:
-        wt = model.create_entity('IfcWorkTime', Name=name, Start=start_iso, Finish=finish_iso)
-    except Exception:
-        return False
-    try:
-        if is_exception:
-            lst = list(getattr(cal, 'ExceptionTimes', []) or [])
-            lst.append(wt)
-            cal.ExceptionTimes = lst
-        else:
-            lst = list(getattr(cal, 'WorkingTimes', []) or [])
-            lst.append(wt)
-            cal.WorkingTimes = lst
+        cal = model.by_id(int(calendar_id))
+        if not cal:
+            return False
+        if not start_iso and not finish_iso:
+            return False
+        s_val, f_val = start_iso, finish_iso
+        if s_val and f_val and s_val > f_val:
+            s_val, f_val = f_val, s_val
+        # Crea l'entità con il minimo indispensabile
+        wt = model.create_entity('IfcWorkTime', Name=(name or None))
+        # Prova a impostare gli attributi secondo lo schema disponibile
+        def _set_attr(obj, attr, val) -> bool:
+            try:
+                setattr(obj, attr, val)
+                return True
+            except Exception:
+                return False
+        ok_start = False; ok_finish = False
+        if s_val:
+            for a in ('Start', 'StartTime'):
+                if _set_attr(wt, a, s_val):
+                    ok_start = True; break
+            if not ok_start:
+                # fallback solo data
+                try:
+                    d_only = s_val.split('T')[0]
+                except Exception:
+                    d_only = s_val
+                for a in ('Start', 'StartTime'):
+                    if _set_attr(wt, a, d_only):
+                        ok_start = True; break
+        if f_val:
+            for a in ('Finish', 'FinishTime', 'EndTime'):
+                if _set_attr(wt, a, f_val):
+                    ok_finish = True; break
+            if not ok_finish:
+                try:
+                    d_only_f = f_val.split('T')[0]
+                except Exception:
+                    d_only_f = f_val
+                for a in ('Finish', 'FinishTime', 'EndTime'):
+                    if _set_attr(wt, a, d_only_f):
+                        ok_finish = True; break
+        # Se almeno uno tra start/finish è impostato, procedi
+        if not (ok_start or ok_finish):
+            return False
+        try:
+            if is_exception:
+                current = list(getattr(cal, 'ExceptionTimes', []) or [])
+                current.append(wt)
+                cal.ExceptionTimes = tuple(current)
+            else:
+                current = list(getattr(cal, 'WorkingTimes', []) or [])
+                current.append(wt)
+                cal.WorkingTimes = tuple(current)
+        except Exception:
+            return False
         return True
     except Exception:
         return False
@@ -619,3 +687,76 @@ def build_calendars_df(model) -> pd.DataFrame:
             'ExceptionTimes': len(list(et)),
         })
     return pd.DataFrame(rows)
+
+
+def get_work_plan_attrs(wp) -> dict:
+    try:
+        return {
+            'Id': (wp.id() if hasattr(wp, 'id') else None),
+            'Name': getattr(wp, 'Name', None),
+            'Identification': getattr(wp, 'Identification', None),
+            'Purpose': getattr(wp, 'Purpose', None),
+            'PredefinedType': getattr(wp, 'PredefinedType', None),
+            'CreationDate': getattr(wp, 'CreationDate', None),
+            'StartTime': getattr(wp, 'StartTime', None),
+            'FinishTime': getattr(wp, 'FinishTime', None),
+            'ObjectType': getattr(wp, 'ObjectType', None),
+            'Duration': getattr(wp, 'Duration', None),
+            'TotalFloat': getattr(wp, 'TotalFloat', None),
+        }
+    except Exception:
+        return {}
+
+
+def update_work_plan(model, plan_id: int, name: str | None = None, identification: str | None = None,
+                     purpose: str | None = None, predefined_type: str | None = None,
+                     creation_datetime: str | None = None, start_time: str | None = None, finish_time: str | None = None,
+                     object_type: str | None = None, duration_iso: str | None = None, total_float_iso: str | None = None) -> bool:
+    wp = model.by_id(int(plan_id)) if plan_id else None
+    if not wp:
+        return False
+    try:
+        if name is not None:
+            wp.Name = name
+        if identification is not None:
+            wp.Identification = identification
+        if purpose is not None:
+            wp.Purpose = purpose
+        if predefined_type is not None:
+            wp.PredefinedType = predefined_type
+        if creation_datetime is not None:
+            wp.CreationDate = creation_datetime
+        if start_time is not None:
+            wp.StartTime = start_time
+        if finish_time is not None:
+            wp.FinishTime = finish_time
+        if object_type is not None:
+            wp.ObjectType = object_type
+        if duration_iso is not None:
+            wp.Duration = duration_iso
+        if total_float_iso is not None:
+            wp.TotalFloat = total_float_iso
+        return True
+    except Exception:
+        return False
+
+
+def link_work_plan_to_project(model, work_plan_or_id) -> bool:
+    try:
+        wp = work_plan_or_id
+        if not getattr(wp, 'is_a', None):
+            wp = model.by_id(int(work_plan_or_id))
+        if not wp:
+            return False
+        projects = model.by_type('IfcProject') or []
+        if not projects:
+            return False
+        project = projects[0]
+        # Create IfcRelDeclares from project to work plan
+        try:
+            model.create_entity('IfcRelDeclares', GlobalId=new_guid(), RelatingContext=project, RelatedDefinitions=[wp])
+            return True
+        except Exception:
+            return False
+    except Exception:
+        return False
