@@ -450,7 +450,7 @@ def execute():
         def save_file():
             session.ifc_file.write(session.file_name)
 
-        (tab_check, tab_workplan,  tab_calendars, tab_schedules, tab_elements_tasks, tab_nesting) = st.tabs(["✅ Check", "🗂️ Work Plan", "🗓️ Work Calendars", "📝 Schedules → Tasks", "🧱 Tasks → Elements", "📊 Timeline & Gantt chart"])
+        (tab_check, tab_workplan,  tab_calendars, tab_schedules, tab_elements_tasks, tab_nesting) = st.tabs(["✅ Check", "🗂️ Work Plan", "🗓️ Work Calendar", "📝 Work Schedule", "🧱 Task", "📊 Timeline & Gantt chart"])
 
 
         # Check tab
@@ -550,7 +550,25 @@ def execute():
 
         # WorkPlan
         with tab_workplan:
-            st.subheader("WorkPlan")
+            st.markdown(
+                """
+                The WorkPlan represents the overall project plan or a high‑level program.
+                The associated Property Sets (Pset_WorkControlCommon) describe global or summary attributes of the plan; they do not define operational working‑time rules.
+                Key attributes include:
+
+                • WorkStartTime → overall start date/time of the plan
+
+                • WorkFinishTime → planned end date/time
+
+                • WorkDuration → total estimated duration
+
+                • TotalFloat → overall schedule float/slack
+
+                • WorkControlType → type of plan (e.g., construction, demolition, maintenance)
+
+                It does not define how working hours or days are distributed over time — it only states when the overall plan starts and ends.
+                """
+            )
             plans = session.ifc_file.by_type('IfcWorkPlan') or []
             scheds = session.ifc_file.by_type('IfcWorkSchedule') or []
 
@@ -682,7 +700,21 @@ def execute():
 
         # Calendars tab
         with tab_calendars:
-            st.subheader("Work Calendars")
+            st.markdown(
+                """
+                The WorkCalendar captures the operational and recurring structure of working time.
+                It tells when work is allowed and when it is not, using weekly patterns and explicit exceptions.
+                Key attributes include:
+                
+                • IfcWorkTime → defines time intervals (e.g., Mon–Fri 08:00–12:00 / 13:00–17:00)
+
+                • ExceptionTimes → holidays or suspensions that override working times
+
+                • PredefinedType → distinguishes shifts or calendar types (FIRSTSHIFT, THIRDSHIFT, NIGHTSHIFT, USERDEFINED, etc.)
+
+                It is the “operational” calendar which tasks and resources reference via IfcRelAssignsToControl.
+                """
+            )
             df_cal = ifc4d.build_calendars_df(session.ifc_file)
             st.dataframe(df_cal, use_container_width=True)
             st.markdown("---")
@@ -776,7 +808,129 @@ def execute():
 
         # Schedules management
         with tab_schedules:
+            st.markdown(
+                """
+                IfcWorkSchedule represents a schedule of activities within a WorkPlan. It organizes tasks, resources, and operational timing for a particular phase or portion of the overall work.
+
+                Key points: may be linked to the project via IfcRelDeclares and controls tasks/resources via IfcRelAssignsToControl; can be aggregated under a WorkPlan using IfcRelAggregates, and sub‑schedules may be modeled via IfcRelNests.
+
+                Core attributes and rules:
+
+                • StartTime (required) — start date/time of the schedule
+
+                • FinishTime (optional) — end date/time of the schedule
+
+                • Duration (optional) — overall duration
+
+                • TotalFloat (optional) — allowable overall float/slack
+
+                • PredefinedType (optional) — IfcWorkScheduleTypeEnum (PLANNED, ACTUAL, BASELINE, USERDEFINED). If USERDEFINED, ObjectType must be set.
+
+                """
+            )
+            st.subheader("Create / edit WorkSchedule")
+            ws_list = session.ifc_file.by_type('IfcWorkSchedule') or []
+            ws_options = ["Create new WorkSchedule"] + [f"{w.id()} - {getattr(w,'Name',str(w))}" for w in ws_list]
+            sel_ws_mgr = st.selectbox("WorkSchedule", ws_options, key="ws_mgr_sel")
+            creating_ws = (sel_ws_mgr == "Create new WorkSchedule")
+            if creating_ws:
+                ws_attrs = {
+                    'Name': 'Work Schedule',
+                    'Identification': '',
+                    'Purpose': '',
+                    'PredefinedType': 'PLANNED',
+                    'CreationDate': None,
+                    'StartTime': None,
+                    'FinishTime': None,
+                    'ObjectType': '',
+                    'Duration': '',
+                    'TotalFloat': '',
+                }
+                current_ws_id = None
+            else:
+                current_ws_id = int(sel_ws_mgr.split(' - ',1)[0])
+                ws_obj = session.ifc_file.by_id(current_ws_id)
+                ws_attrs = ifc4d.get_work_schedule_attrs(ws_obj)
+            c1, c2 = st.columns(2)
+            with c1:
+                ws_name = st.text_input("Name", value=(ws_attrs.get('Name') or ''), key="ws_form_name")
+                ws_ident = st.text_input("Identification", value=(ws_attrs.get('Identification') or ''), key="ws_form_ident")
+                ws_purpose = st.text_input("Purpose", value=(ws_attrs.get('Purpose') or ''), key="ws_form_purpose")
+                ws_types = ["ACTUAL", "BASELINE", "PLANNED", "USERDEFINED", "NOTDEFINED"]
+                try:
+                    idx = ws_types.index(ws_attrs.get('PredefinedType') or 'PLANNED')
+                except Exception:
+                    idx = 2
+                ws_type = st.selectbox("PredefinedType", ws_types, index=idx, key="ws_form_type")
+                ws_object_type = st.text_input("ObjectType", value=(ws_attrs.get('ObjectType') or ''), key="ws_form_objecttype", help="Required when PredefinedType is USERDEFINED.")
+                ws_dur = st.text_input("Duration (ISO 8601)", value=(ws_attrs.get('Duration') or ''), key="ws_form_dur")
+                ws_tf = st.text_input("TotalFloat (ISO 8601)", value=(ws_attrs.get('TotalFloat') or ''), key="ws_form_tf")
+            with c2:
+                def _pdt(s):
+                    try:
+                        return datetime.datetime.fromisoformat(s)
+                    except Exception:
+                        return None
+                cd_dt = _pdt(ws_attrs.get('CreationDate')) or datetime.datetime.combine(datetime.date.today(), datetime.time(9,0))
+                st_dt = _pdt(ws_attrs.get('StartTime')) or datetime.datetime.combine(datetime.date.today(), datetime.time(9,0))
+                fn_dt = _pdt(ws_attrs.get('FinishTime')) or datetime.datetime.combine(datetime.date.today(), datetime.time(17,0))
+                cd = st.date_input("Creation date", value=cd_dt.date(), key="ws_form_creation_date")
+                ct = st.time_input("Creation time", value=cd_dt.time(), key="ws_form_creation_time")
+                sd = st.date_input("Start date", value=st_dt.date(), key="ws_form_start_date")
+                stime = st.time_input("Start time", value=st_dt.time(), key="ws_form_start_time")
+                fd = st.date_input("Finish date", value=fn_dt.date(), key="ws_form_finish_date")
+                ftime = st.time_input("Finish time", value=fn_dt.time(), key="ws_form_finish_time")
+            def to_iso(d,t):
+                try:
+                    return datetime.datetime.combine(d,t).isoformat()
+                except Exception:
+                    return None
+            if st.button("Save WorkSchedule", key="btn_save_ws"):
+                # Validate USERDEFINED rule
+                if ws_type == 'USERDEFINED' and not (ws_object_type and ws_object_type.strip()):
+                    st.error("ObjectType is required when PredefinedType is USERDEFINED")
+                else:
+                    if creating_ws:
+                        ws = ifc4d.create_work_schedule(
+                            session.ifc_file,
+                            name=(ws_name or "Work Schedule"),
+                            identification=(ws_ident or None),
+                            predefined_type=ws_type,
+                            start_time=to_iso(sd, stime),
+                            finish_time=to_iso(fd, ftime),
+                            purpose=(ws_purpose or None),
+                            object_type=(ws_object_type or None),
+                            creation_datetime=to_iso(cd, ct),
+                            duration_iso=(ws_dur or None),
+                            total_float_iso=(ws_tf or None),
+                        )
+                        if ws:
+                            ifc4d.link_work_schedule_to_project(session.ifc_file, ws)
+                            st.success("WorkSchedule created")
+                        else:
+                            st.error("Failed to create WorkSchedule")
+                    else:
+                        ok = ifc4d.update_work_schedule(
+                            session.ifc_file,
+                            current_ws_id,
+                            name=(ws_name or None),
+                            identification=(ws_ident or None),
+                            purpose=(ws_purpose or None),
+                            predefined_type=ws_type,
+                            object_type=(ws_object_type or None),
+                            creation_datetime=to_iso(cd, ct),
+                            start_time=to_iso(sd, stime),
+                            finish_time=to_iso(fd, ftime),
+                            duration_iso=(ws_dur or None),
+                            total_float_iso=(ws_tf or None),
+                        )
+                        if ok:
+                            st.success("WorkSchedule updated")
+                        else:
+                            st.error("Failed to update WorkSchedule")
+            st.markdown("---")
             st.subheader("Assign tasks to WorkSchedules")
+            st.caption("Select a schedule and assign unassigned tasks. If no tasks exist yet, create them in the next tab (Tasks).")
             scheds = session.ifc_file.by_type('IfcWorkSchedule') or []
             if not scheds:
                 st.info("No WorkSchedules found. Create one in previous tab.")
@@ -786,7 +940,7 @@ def execute():
                 sel_id = int(sel.split(' - ',1)[0]) if sel else None
                 unassigned = ifc4d.get_unassigned_tasks(session.ifc_file)
                 if not unassigned:
-                    st.info("No unassigned tasks.")
+                    st.info("No unassigned tasks. Create tasks in the next tab (Tasks), then return here to assign them.")
                 else:
                     task_options = [f"{t.id()} - {getattr(t,'Name',str(t))}" for t in unassigned]
                     chosen = st.multiselect("Tasks to assign", task_options, key="tasks_to_assign", help="Select one or more unassigned tasks to add to the WorkSchedule.")
@@ -798,7 +952,7 @@ def execute():
             st.button("💾 Save File", key="save_file_tab_sched", on_click=save_file)
 
 
-        # Tasks -> Elements
+        # Tasks 
         with tab_elements_tasks:
             st.subheader("Select elements and create tasks")
             df_unscheduled = ifc4d.build_unscheduled_df(session.ifc_file)
