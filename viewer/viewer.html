@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Viewer (IFC only)</title>
+  <style>
+    html, body, #app, xeo-viewer { height: 100%; width: 100%; margin: 0; padding: 0; }
+    body { background: #0f172a; color: #e2e8f0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+  </style>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@xeokit/xeokit-webcomponents/dist/index.min.js"></script>
+</head>
+
+<body>
+  <div id="app">
+    <xeo-viewer @model-entity-clicked="entityClicked" id="viewer-1" transparent="false" show-edges="false" color-texture-enabled="true">
+      <xeo-tree-view-panel width="340px" bgColor="rgba(15,23,42,0.75)" position="right">
+        <xeo-tree-view @tree-view-node-title-clicked="treeNodeTitleClicked" hierarchy="containment" id="tree-view-1" autoExpandDepth="3"></xeo-tree-view>
+        <xeo-tree-view hierarchy="types" autoExpandDepth="1"></xeo-tree-view>
+        <xeo-tree-view hierarchy="storeys" autoExpandDepth="2"></xeo-tree-view>
+      </xeo-tree-view-panel>
+      <xeo-fast-nav scale-canvas-resolution="true" scale-canvas-resolution-factor="0.5"></xeo-fast-nav>
+      <xeo-nav-cube corner="topRight"></xeo-nav-cube>
+      <xeo-skybox preset="studio"></xeo-skybox>
+      <xeo-stats-panel></xeo-stats-panel>
+      <xeo-model @model-loaded="modelLoaded" id="model-1" bounding-box="true"></xeo-model>
+    </xeo-viewer>
+  </div>
+  <script>
+    function entityClicked(event) { console.log('Custom callback for model-entity-clicked:', { detail: event.detail }); }
+    function modelLoaded(event) {
+      console.log('Custom callback for model-loaded:', { detail: event.detail });
+      try {
+        const viewerEl = document.getElementById('viewer-1');
+        const viewer = viewerEl && viewerEl.viewer;
+        const aabb = (event && event.detail && (event.detail.modelEntity?.aabb || event.detail.aabb)) || null;
+        if (viewer && viewer.cameraFlight && aabb) {
+          viewer.cameraFlight.flyTo({ aabb });
+        }
+      } catch (e) { console.warn('Auto-fit failed', e); }
+    }
+    function treeNodeTitleClicked(event) { console.log('Custom callback for tree-view-node-title-clicked:', { detail: event.detail }); }
+
+    function toIFCSource(src) {
+      if (!src) return null;
+      if (src.includes(';')) { return src.startsWith('ifc;') ? src : null; }
+      const lower = src.toLowerCase();
+      if (lower.endsWith('.ifc') || lower.endsWith('.ifczip')) { return 'ifc;' + src; }
+      return null;
+    }
+
+    (function () {
+      try {
+        const params = new URLSearchParams(location.search);
+        const raw = params.get('src') || (window.MODEL_SRC || null);
+        const ifcSrc = toIFCSource(raw);
+        if (ifcSrc) {
+          const m = document.getElementById('model-1');
+          if (m) m.setAttribute('src', ifcSrc);
+        } else if (raw) { console.warn('Provided src is not IFC, ignoring:', raw); }
+      } catch (e) { console.warn('Query param parsing failed', e); }
+    })();
+  </script>
+</body>
+</html>

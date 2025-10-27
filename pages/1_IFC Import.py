@@ -3,7 +3,6 @@
 # ─────────────────────────────────────────────
 import ifcopenshell as ifc
 import streamlit as st
-import os
 import time
 from pathlib import Path
 
@@ -45,6 +44,17 @@ def callback_upload():
             with open(temp_path, "wb") as f:
                 f.write(uploaded_data)
             session["temp_ifc_path"] = str(temp_path)
+
+            # Save to static/uploads (served by Streamlit) and expose URL for viewer
+            project_root = Path(__file__).resolve().parent.parent
+            static_uploads = project_root / "static" / "uploads"
+            static_uploads.mkdir(parents=True, exist_ok=True)
+            uploaded_name = session.get("uploaded_file").name or "uploaded.ifc"
+            safe_name = "uploaded" + (Path(uploaded_name).suffix or ".ifc")
+            target_path = static_uploads / safe_name
+            with open(target_path, "wb") as vf:
+                vf.write(uploaded_data)
+            session["viewer_src_rel"] = f"/static/uploads/{safe_name}"
         except Exception as e:
             st.error(f"⚠️ Failed to write temp IFC file: {e}")
             return

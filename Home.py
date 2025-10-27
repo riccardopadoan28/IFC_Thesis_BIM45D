@@ -48,7 +48,7 @@ Additional features:
 
 ---
 ### ⚙️ Technical Note
-This app is built with **Streamlit** and integrates with **IfcOpenShell** and **web-ifc** for IFC processing.
+This app is built with **Streamlit** and integrates with **IfcOpenShell** and **xeokit WebComponents** for IFC processing and visualization.
 - Regularly clear the cache or restart Streamlit if the app behaves unexpectedly.
 - For optimal performance, use the latest version of Google Chrome or Microsoft Edge.
 - Remember: this is an OpenBIM platform — everything is meant to stay interoperable and transparent.
@@ -59,7 +59,9 @@ This app is built with **Streamlit** and integrates with **IfcOpenShell** and **
 
 - Streamlit: https://streamlit.io/
 - IfcOpenShell: https://ifcopenshell.org/
-- web-ifc & web-ifc-viewer: https://github.com/ifcjs
+- xeokit WebComponents: https://github.com/xeokit/xeokit-webcomponents
+- xeokit blog (building viewers): https://xeokit.io/blog/building-3d-model-viewers-with-xeokit-webcomponents/
+- xeokit CDN module: https://cdn.jsdelivr.net/npm/@xeokit/xeokit-webcomponents/dist/index.min.js
 - pandas: https://pandas.pydata.org/ (data handling, QTO/BOQ export)
 - openpyxl / XlsxWriter: https://openpyxl.readthedocs.io/ (XLSX export)
 - lxml / xml libraries: https://lxml.de/ (IDS/XML export and parsing)
@@ -72,5 +74,5 @@ This app is built with **Streamlit** and integrates with **IfcOpenShell** and **
 # Footer
 st.markdown("---")
 st.markdown("© 2025 – BIM45D | Developed by Riccardo Padoan, RSP Group.")
-st.markdown("| Visit [https://github.com/riccardopadoan28/IFC_Thesis_BIM45D] for more details.")
+st.markdown("Visit [https://github.com/riccardopadoan28/IFC_Thesis_BIM45D] for more details.")
 st.markdown("All rights reserved. | This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).")

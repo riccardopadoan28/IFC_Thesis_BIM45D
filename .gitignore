@@ -17,6 +17,13 @@ __pycache__/
 /temp_downloads/
 /temp-download/
 
+# Upload artifacts
+/static/uploads/
+/viewer/uploads/
+
+# Node
+node_modules/
+
 # OS junk
 .DS_Store
 Thumbs.db
