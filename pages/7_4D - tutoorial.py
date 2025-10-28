@@ -1,19 +1,19 @@
 # ─────────────────────────────────────────────
-# 📦 Importazioni (solo quelle necessarie)
+# 📦 Imports (standardized)
 # ─────────────────────────────────────────────
-import ifcopenshell as ifc
 import streamlit as st
-from tools import ifchelper
+from tools import p7_4d as p7  # per-page helper (tutorial)
+from tools import p_shared as shared  # shared model info helpers
+import ifcopenshell as ifc
 
 # ─────────────────────────────────────────────
-# 🧠 Alias per lo stato della sessione Streamlit
+# 🧠 Session alias
 # ─────────────────────────────────────────────
-session = st.session_state 
+session = st.session_state
 
 # -----------------------------
 # ORGANIZZAZIONE DELLA PAGINA
 # -----------------------------
-# Elenco funzioni/aree (in italiano):
 # 1) initialize_session_state -> USATA: esecuzione pagina; SCOPO: inizializza lo stato di sessione
 # 2) load_work_schedules -> USATA: Tab 'Schedules'; SCOPO: carica IfcWorkSchedule e IfcTask dal file IFC
 # 3) add_work_schedule -> USATA: Sidebar (Work Scheduler); SCOPO: crea una IfcWorkSchedule
@@ -39,14 +39,14 @@ def load_work_schedules():
     session["SequenceData"]["schedules"] = session.ifc_file.by_type("IfcWorkSchedule")
     session["SequenceData"]["tasks"] = session.ifc_file.by_type("IfcTask")
     session["SequenceData"]["ScheduleData"] = [
-        {"Id": schedule.id(), "Data": ifchelper.get_schedule_tasks(schedule)}
+        {"Id": schedule.id(), "Data": p7.get_schedule_tasks(schedule)}
         for schedule in session.ifc_file.by_type("IfcWorkSchedule")
     ]
 
 
 def add_work_schedule():
     """Crea una nuova WorkSchedule con il nome inserito nella sidebar e ricarica i dati."""
-    ifchelper.create_work_schedule(session.ifc_file, session["schedule_input"])
+    p7.create_work_schedule(session.ifc_file, session["schedule_input"])
     load_work_schedules()
     
 
@@ -64,10 +64,10 @@ def draw_schedules():
     schedule_id = int(session.schedule_selector.split("/",1)[1]) if session.schedule_selector else None
     schedule = session.ifc_file.by_id(schedule_id) if schedule_id else None
     if schedule:
-        tasks = ifchelper.get_schedule_tasks(schedule) if schedule else None
+        tasks = p7.get_schedule_tasks(schedule) if schedule else None
         if tasks:
             st.info(f'Number of Tasks : {len(tasks)}')
-            task_data = ifchelper.get_task_data(tasks)
+            task_data = p7.get_task_data(tasks)
             st.table(task_data)
         else:
             st.warning("No tasks loaded for this schedule")
@@ -258,3 +258,6 @@ def execute():
 
 # Esegue la pagina
 execute()
+
+# Reminder comment for page 7 tutorial.
+# Uniform page structure applied. If you still have direct ifcopenshell logic here, consider moving it into the corresponding tools module (p0..p8) for consistency.

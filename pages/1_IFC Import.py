@@ -1,31 +1,25 @@
 # ─────────────────────────────────────────────
-# 📦 Importazioni
+# 📦 Imports (standardized)
 # ─────────────────────────────────────────────
-import ifcopenshell as ifc
 import streamlit as st
-import time
+from tools import p_shared as shared  # shared model info helpers
+from tools import p1_ifc_import as p1  # per-page helper
 from pathlib import Path
-from tools.pathhelper import ensure_session_id, get_session_dir, get_session_public_base
 from tools.pathhelper import ensure_data_dir, public_url
-
-# Usa la cartella temporanea unificata se disponibile
-try:
-    from tools.pathhelper import ensure_temp_dir, TEMP_DIR
-except Exception:
-    ensure_temp_dir = None
-    TEMP_DIR = Path("temp")
+import ifcopenshell as ifc
+import time
 
 # ─────────────────────────────────────────────
-# 🧠 Alias per lo stato della sessione Streamlit
+# 🧠 Session alias
 # ─────────────────────────────────────────────
 session = st.session_state
 
 # -----------------------------
 # ORGANIZZAZIONE DELLA PAGINA
 # -----------------------------
-# Funzioni principali e scopi (in italiano):
-# 1) callback_upload -> USATA: file_uploader callback; SCOPO: salva file in sessione e temp path
-# 2) main -> USATA: entry point della pagina; SCOPO: interfaccia upload e info
+# 1) initialize_session_state — init page state
+# 2) support functions — UI/data helpers (no ifcopenshell here)
+# 3) execute — main entry point building the UI
 
 # ─────────────────────────────────────────────
 # 📤 Callback per caricamento file

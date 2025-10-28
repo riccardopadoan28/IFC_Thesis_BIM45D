@@ -1,35 +1,25 @@
 # ─────────────────────────────────────────────
-# 📦 Importazioni
+# 📦 Imports (standardized)
 # ─────────────────────────────────────────────
-import sys
-import os
 import streamlit as st
-import plotly.express as px
+from tools import ifc_prop_qtt as ifc_props  # per-page helper (page 6)
+from tools import p_shared as shared  # shared model info helpers
 import pandas as pd
-import numpy as np
-import base64
-import ifcopenshell as ifc
-import streamlit.components.v1 as components  # for inline HTML preview
-from tools import ifchelper, pandashelper, graph_maker
-from tools.pathhelper import save_text, save_bytes
-
-# Import helpers
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import plotly.express as px
+from tools import pandashelper
+from tools.pathhelper import save_text
 
 # ─────────────────────────────────────────────
-# 🧠 Alias per lo stato della sessione Streamlit
+# 🧠 Session alias
 # ─────────────────────────────────────────────
 session = st.session_state
 
 # -----------------------------
 # ORGANIZZAZIONE DELLA PAGINA
 # -----------------------------
-# Elenco funzioni/aree (in italiano):
-# 1) initialize_session_state -> USATA: inizializza lo stato della sessione per DataFrame
-# 2) load_data -> USATA: Tab DataFrame; SCOPO: carica oggetti e costruisce DataFrame
-# 3) load_quantities -> USATA: Tab Quantities; SCOPO: costruisce DataFrame quantità
-# 4) get_ifc_pandas/get_ifc_quantities -> USATA: Data Extraction; SCOPO: parsing IFC
-# 5) execute -> USATA: entry point; SCOPO: costruisce UI e tabs
+# 1) initialize_session_state — init page state
+# 2) support functions — UI/data helpers (no ifcopenshell here)
+# 3) execute — main entry point building the UI
 
 # ----------------------------------------------------
 # Inizializza le variabili necessarie nella sessione
@@ -48,7 +38,7 @@ def load_data():
         return pandashelper.create_empty_dataframe()
 
     session["Classes"] = []
-    df = get_ifc_pandas()
+    df = ifc_props.get_ifc_pandas(session.get("ifc_file"), session.get("ifc_schema", ""))
     session["DataFrame"] = df
 
     if isinstance(df, pd.DataFrame) and "Class" in df.columns:
@@ -64,8 +54,8 @@ def load_data():
 # ----------------------------------------------------
 def load_quantities():
     session["Classes"] = []
-    ifc_file = session.get("ifc_file")   # recupera il file IFC dalla sessione
-    df = ifchelper.get_ifc_quantities(ifc_file)    # passa il file come argomento
+    ifc_file = session.get("ifc_file")
+    df = ifc_props.get_ifc_quantities(ifc_file)
 
     session["QuantitiesFrame"] = df
 
@@ -78,72 +68,16 @@ def load_quantities():
     session["IsQuantitiesLoaded"] = True
 
 # ----------------------------------------------------
-# Estrae i dati dal file IFC e costruisce un DataFrame
-# ----------------------------------------------------
-def get_ifc_pandas():
-    schema = session.get("ifc_schema", "").upper()
-
-    try:
-        classes_by_schema = {
-            "IFC2X3": [
-                "IfcBeam", "IfcColumn", "IfcSlab", "IfcWall", "IfcWallStandardCase",
-                "IfcFooting", "IfcMember", "IfcReinforcingBar", "IfcReinforcingMesh",
-                "IfcTendon", "IfcTendonAnchor", "IfcStructuralConnection",
-                "IfcStructuralCurveMember", "IfcStructuralSurfaceMember",
-                "IfcRamp", "IfcStair"
-            ],
-            "IFC4": [
-                "IfcBeam", "IfcColumn", "IfcSlab", "IfcWall", "IfcWallStandardCase",
-                "IfcFooting", "IfcMember", "IfcReinforcingBar", "IfcReinforcingMesh",
-                "IfcTendon", "IfcTendonAnchor", "IfcStructuralConnection",
-                "IfcStructuralCurveMember", "IfcStructuralSurfaceMember",
-                "IfcRamp", "IfcStair"
-            ],
-            "IFC4X3": [
-                "IfcBeam", "IfcColumn", "IfcSlab", "IfcWall", "IfcWallStandardCase",
-                "IfcFooting", "IfcMember", "IfcReinforcingBar", "IfcReinforcingMesh",
-                "IfcTendon", "IfcTendonAnchor", "IfcStructuralConnection",
-                "IfcStructuralCurveMember", "IfcStructuralSurfaceMember",
-                "IfcRamp", "IfcStair", "IfcBearing"
-            ]
-        }
-
-        target_classes = classes_by_schema.get(schema, classes_by_schema["IFC4"])
-        dfs = []
-
-        for cls in target_classes:
-            try:
-                data, pset = ifchelper.get_objects_data_by_class(session["ifc_file"], cls)
-                df = ifchelper.create_pandas_dataframe(data, pset)
-                if not df.empty:
-                    df["Class"] = cls
-                    dfs.append(df)
-            except Exception as e:
-                st.warning(f"⚠️ Error loading class {cls}: {e}")
-
-        if not dfs:
-            st.warning("No structural objects found in the IFC file.")
-            return pandashelper.create_empty_dataframe()
-
-        df_all = pd.concat(dfs, ignore_index=True)
-        return df_all
-
-    except Exception as e:
-        st.error(f"❌ Error while extracting IFC data: {e}")
-        return pandashelper.create_empty_dataframe()
-
-# ----------------------------------------------------
 # Funzioni di download del DataFrame
 # ----------------------------------------------------
-# CSV export implementation moved to tools.ifchelper.export_ifc_as_csv_bytes (uses ifcopenshell CSV exporter when available)
 
 def download_csv():
-    """Return CSV bytes using helper implementation in tools.ifchelper."""
+    """Return CSV bytes using helper implementation in tools.ifc_prop_qtt."""
     model = session.get('ifc_file')
     df = session.get('DataFrame')
     csv_bytes = None
     try:
-        csv_bytes = ifchelper.export_ifc_as_csv_bytes(model=model, df=df)
+        csv_bytes = ifc_props.export_ifc_as_csv_bytes(model=model, df=df)
     except Exception:
         csv_bytes = None
 
@@ -332,7 +266,7 @@ def execute():
                     st.warning("⚠️ No IFC file loaded yet.")
                 else:
                     # Carica le quantità dal modello IFC
-                    qto_df = ifchelper.get_ifc_quantities(session["ifc_file"])
+                    qto_df = ifc_props.get_ifc_quantities(session["ifc_file"])
 
                     if qto_df.empty:
                         st.warning("⚠️ Quantities DataFrame is empty.")

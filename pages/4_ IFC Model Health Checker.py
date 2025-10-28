@@ -1,39 +1,33 @@
 # ─────────────────────────────────────────────
-# 📦 Importazioni
+# 📦 Imports (standardized)
 # ─────────────────────────────────────────────
 import streamlit as st
-from tools import ifchelper, graph_maker, pandashelper
-from datetime import datetime
-import ifcopenshell as ifc
-import plotly.express as px
-import base64
+from tools import p4_health_checker as p4  # per-page helper
+from tools import p_shared as shared  # shared model info helpers
 from tools.ifc_432_dictionary import IFC_STRUCTURAL_DICTIONARY_4x3
+import plotly.express as px
+import ifcopenshell as ifc
 
 # ─────────────────────────────────────────────
-# 🧠 Alias per lo stato della sessione Streamlit
+# 🧠 Session alias
 # ─────────────────────────────────────────────
 session = st.session_state
-
-# =============================================================================
-# 🔁 Inizializzazione dello stato della sessione
-# =============================================================================
-def initialize_session_state():
-    session["isHealthDataLoaded"] = False
-    session["HealthData"] = {}
-    session["Graphs"] = {}
-    session["SequenceData"] = {}
-    session["CostScheduleData"] = {}
-    session['summary_stats'] = None
 
 # -----------------------------
 # ORGANIZZAZIONE DELLA PAGINA
 # -----------------------------
-# Elenco funzioni/aree (in italiano):
-# 1) initialize_session_state -> USATA: esecuzione pagina; SCOPO: inizializza lo stato
-# 2) load_data -> USATA: Charts tab; SCOPO: calcola statistiche e grafici
-# 3) draw_content -> USATA: Charts tab; SCOPO: mostra risultati e interpretazione
-# 4) initialise_debug_props, get_object_data, edit_object_data -> USATA: Debug; SCOPO: ispezione oggetti (opzionale)
-# 5) execute -> USATA: entry point; SCOPO: costruisce UI pagina
+# 1) initialize_session_state — init page state
+# 2) support functions — UI/data helpers (no ifcopenshell here)
+# 3) execute — main entry point building the UI
+
+# =============================================================================
+# 🔁 Inizializzazione dello stato della sessione
+# =============================================================================
+# Nota: inizializziamo solo le chiavi effettivamente usate da questa pagina.
+def initialize_session_state():
+    session["isHealthDataLoaded"] = False
+    session["Graphs"] = {}
+    session['summary_stats'] = None
 
 # =============================================================================
 # 📊 Caricamento dati e calcolo di TUTTE le statistiche
@@ -106,9 +100,9 @@ def draw_content():
     # Disegna i grafici
     row1_col1, row1_col2 = st.columns(2)
     with row1_col1:
-        st.plotly_chart(session.Graphs["objects_graph"], use_container_width=True)
+        st.plotly_chart(session["Graphs"]["objects_graph"], use_container_width=True)
     with row1_col2:
-        st.plotly_chart(session.Graphs["high_frquency_graph"], use_container_width=True)
+        st.plotly_chart(session["Graphs"]["high_frquency_graph"], use_container_width=True)
 
     st.markdown("---") 
 
@@ -192,13 +186,6 @@ def get_object_data(fromId=None):
         add_attribute(debug_props["inverse_attributes"], key, getattr(element, key))
     for inverse in session.ifc_file.get_inverse(element):
         debug_props["inverse_references"].append({"string_value": str(inverse), "int_value": inverse.id()})
-
-# =============================================================================
-# ✏️ (placeholder) Modifica attributi oggetto
-# =============================================================================
-def edit_object_data(object_id, attribute):
-    entity = session.ifc_file.by_id(object_id)
-    print(getattr(entity, attribute))
 
 # =============================================================================
 # 🚀 Esecuzione dell'app Streamlit

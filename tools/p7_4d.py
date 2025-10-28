@@ -1,12 +1,26 @@
+"""
+Helper per Pagina 7 — 4D Project Timeline (funzioni complete)
+
+Uso: pages/7_4D - Project Timeline.py e pages/7_4D - tutoorial.py
+Contiene funzioni 4D e UI helper per la pagina 7.
+"""
+
+from __future__ import annotations
+import datetime
+import pandas as pd
 import ifcopenshell as ifc
 import ifcopenshell
 import ifcopenshell.api.sequence
 from ifcopenshell.guid import new as new_guid
 from ifcopenshell.util import element as ifc_element
-import pandas as pd
-import datetime
+import streamlit as st
 
-# Helpers di formattazione
+# Alias sessione per UI
+session = st.session_state
+
+# ------------------------------
+# Helpers di formattazione tempo
+# ------------------------------
 
 def _to_datetime(val):
     try:
@@ -36,7 +50,9 @@ def _iso_dur_to_days(dur: str) -> int:
         pass
     return 0
 
-# Wrappers IFC
+# ------------------------------
+# Wrappers IFC di base
+# ------------------------------
 
 def declare_under_project(model, obj):
     try:
@@ -66,6 +82,9 @@ def nest_under(model, parent_task, child_task):
         except Exception:
             pass
 
+# ------------------------------
+# Creazione e gestione task
+# ------------------------------
 
 def add_task(model, name, predecessor, work_schedule):
     task = ifcopenshell.api.sequence.add_task(
@@ -79,6 +98,140 @@ def add_task(model, name, predecessor, work_schedule):
         ifcopenshell.api.sequence.assign_sequence(model, relating_process=predecessor, related_process=task)
     return task
 
+
+def create_tasks(model, element_ids: list[int], name_prefix: str = "Task", identification_prefix: str | None = None,
+                 start_date=None, start_time=None, finish_date=None, finish_time=None, duration_iso: str | None = None,
+                 mode: str = "per_element") -> int:
+    if not element_ids:
+        return 0
+    s_iso = None; f_iso = None
+    try:
+        if start_date and start_time:
+            s_iso = datetime.datetime.combine(start_date, start_time).isoformat()
+    except Exception:
+        s_iso = None
+    try:
+        if finish_date and finish_time:
+            f_iso = datetime.datetime.combine(finish_date, finish_time).isoformat()
+    except Exception:
+        f_iso = None
+
+    created = 0
+    if mode == "single":
+        tname = name_prefix.strip() or "Task"
+        ident = (identification_prefix or None)
+        try:
+            task = model.create_entity('IfcTask', Name=tname, Identification=ident)
+        except Exception:
+            task = None
+        if task:
+            if s_iso or f_iso or duration_iso:
+                try:
+                    tt = model.create_entity('IfcTaskTime', ScheduleStart=s_iso, ScheduleFinish=f_iso, ScheduleDuration=duration_iso)
+                    try:
+                        task.TaskTime = tt
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            objs = [model.by_id(int(e)) for e in element_ids if model.by_id(int(e)) is not None]
+            if objs:
+                try:
+                    ifc.api.run('sequence.assign_process', model, relating_process=task, related_objects=objs)
+                except Exception:
+                    try:
+                        model.create_entity('IfcRelAssignsToProcess', GlobalId=new_guid(), RelatingProcess=task, RelatedObjects=objs)
+                    except Exception:
+                        pass
+            created = 1
+    else:
+        for eid in element_ids:
+            el = model.by_id(int(eid))
+            if not el:
+                continue
+            tname = f"{name_prefix}_{eid}" if name_prefix else f"Task_{eid}"
+            ident = (f"{identification_prefix}{eid}" if identification_prefix else None)
+            try:
+                task = model.create_entity('IfcTask', Name=tname, Identification=ident)
+            except Exception:
+                task = None
+            if not task:
+                continue
+            if s_iso or f_iso or duration_iso:
+                try:
+                    tt = model.create_entity('IfcTaskTime', ScheduleStart=s_iso, ScheduleFinish=f_iso, ScheduleDuration=duration_iso)
+                    try:
+                        task.TaskTime = tt
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            try:
+                ifc.api.run('sequence.assign_process', model, relating_process=task, related_objects=[el])
+            except Exception:
+                try:
+                    model.create_entity('IfcRelAssignsToProcess', GlobalId=new_guid(), RelatingProcess=task, RelatedObjects=[el])
+                except Exception:
+                    pass
+            created += 1
+    return created
+
+
+def create_tasks_for_elements_in_schedule(model, schedule_id: int, element_ids: list[int], task_name_prefix: str = 'Task') -> int:
+    """Crea una task per ogni elemento e la inserisce nella WorkSchedule, collegando elemento (RelAssignsToProcess) e schedule (RelAssignsToControl)."""
+    sched = model.by_id(int(schedule_id)) if schedule_id else None
+    if not sched or not element_ids:
+        return 0
+    created = 0
+    for eid in element_ids:
+        el = model.by_id(int(eid))
+        if not el:
+            continue
+        task = None
+        try:
+            task = ifc.api.run('sequence.add_task', model, work_schedule=sched, name=f"{task_name_prefix}_{eid}")
+        except Exception:
+            try:
+                task = model.create_entity('IfcTask', Name=f"{task_name_prefix}_{eid}")
+            except Exception:
+                task = None
+        if not task:
+            continue
+        try:
+            ifc.api.run('sequence.assign_process', model, relating_process=task, related_objects=[el])
+        except Exception:
+            try:
+                model.create_entity('IfcRelAssignsToProcess', GlobalId=new_guid(), RelatingProcess=task, RelatedObjects=[el])
+            except Exception:
+                pass
+        try:
+            ifc.api.run('control.assign_control', model, relating_control=sched, related_objects=[task])
+        except Exception:
+            try:
+                model.create_entity('IfcRelAssignsToControl', GlobalId=new_guid(), RelatingControl=sched, RelatedObjects=[task])
+            except Exception:
+                pass
+        created += 1
+    return created
+
+
+def delete_task(model, task_id: int) -> bool:
+    t = model.by_id(int(task_id)) if task_id else None
+    if not t:
+        return False
+    try:
+        ifc.api.run('sequence.remove_task', model, task=t)
+        return True
+    except Exception:
+        try:
+            model.remove(t)
+            return True
+        except Exception:
+            return False
+
+# ------------------------------
+# Estrazione/navigazione task
+# ------------------------------
 
 def _collect_nested_tasks(task, acc:list):
     acc.append(task)
@@ -121,61 +274,6 @@ def get_all_schedule_task_ids(ifc_file):
     return task_ids
 
 
-def get_scheduled_element_ids(ifc_file):
-    scheduled = set()
-    try:
-        task_ids = get_all_schedule_task_ids(ifc_file)
-        for rel in ifc_file.by_type("IfcRelAssignsToProcess") or []:
-            try:
-                proc = getattr(rel, 'RelatingProcess', None)
-                if proc and hasattr(proc, 'id') and proc.id() in task_ids:
-                    for obj in getattr(rel, 'RelatedObjects', []) or []:
-                        if obj.is_a('IfcElement') or obj.is_a('IfcProduct'):
-                            scheduled.add(obj.id())
-            except Exception:
-                continue
-    except Exception:
-        pass
-    return scheduled
-
-
-def build_unscheduled_df(ifc_file):
-    rows = []
-    scheduled_ids = get_scheduled_element_ids(ifc_file)
-    try:
-        elements = ifc_file.by_type('IfcElement') or []
-    except Exception:
-        elements = []
-    for el in elements:
-        try:
-            eid = el.id() if hasattr(el, 'id') else None
-            if eid in scheduled_ids:
-                continue
-            container = None
-            try:
-                c = ifc_element.get_container(el)
-                container = c.Name if c is not None else None
-            except Exception:
-                container = None
-            tname = None
-            try:
-                t = ifc_element.get_type(el)
-                tname = t.Name if t is not None else None
-            except Exception:
-                tname = None
-            rows.append({
-                'ExpressId': eid,
-                'GlobalId': getattr(el, 'GlobalId', None),
-                'Class': el.is_a() if hasattr(el, 'is_a') else None,
-                'Name': getattr(el, 'Name', None),
-                'Level': container,
-                'Type': tname,
-            })
-        except Exception:
-            continue
-    return pd.DataFrame(rows)
-
-
 def build_tasks_df(schedule) -> pd.DataFrame:
     rows = []
     for t in get_schedule_tasks(schedule):
@@ -206,6 +304,31 @@ def build_tasks_df(schedule) -> pd.DataFrame:
         pass
     return df
 
+
+def build_all_tasks_df(ifc_file, schedule_id: int | None = None) -> pd.DataFrame:
+    if schedule_id:
+        ws = ifc_file.by_id(int(schedule_id))
+        if not ws:
+            return pd.DataFrame()
+        return build_tasks_df(ws)
+    rows = []
+    for ws in ifc_file.by_type('IfcWorkSchedule') or []:
+        df = build_tasks_df(ws)
+        if not df.empty:
+            df = df.copy(); df['WorkSchedule'] = getattr(ws, 'Name', None)
+            rows.append(df)
+    if rows:
+        out = pd.concat(rows, ignore_index=True)
+        try:
+            out = out.sort_values(by=['Start', 'Finish'], na_position='last')
+        except Exception:
+            pass
+        return out
+    return pd.DataFrame()
+
+# ------------------------------
+# Schedules e Work Plan
+# ------------------------------
 
 def create_work_schedule(model, name=None, identification=None, predefined_type='PLANNED', start_time=None, finish_time=None, purpose=None):
     ws = None
@@ -326,21 +449,6 @@ def aggregate_schedule_to_workplan(model, workplan_id, schedule_id) -> bool:
         return False
 
 
-def delete_task(model, task_id: int) -> bool:
-    t = model.by_id(int(task_id)) if task_id else None
-    if not t:
-        return False
-    try:
-        ifc.api.run('sequence.remove_task', model, task=t)
-        return True
-    except Exception:
-        try:
-            model.remove(t)
-            return True
-        except Exception:
-            return False
-
-
 def delete_work_plan(model, plan_id: int) -> bool:
     wp = model.by_id(int(plan_id)) if plan_id else None
     if not wp:
@@ -363,6 +471,64 @@ def get_aggregated_schedules(wp):
     except Exception:
         pass
     return out
+
+# ------------------------------
+# Estrazioni varie
+# ------------------------------
+
+def get_scheduled_element_ids(ifc_file):
+    scheduled = set()
+    try:
+        task_ids = get_all_schedule_task_ids(ifc_file)
+        for rel in ifc_file.by_type("IfcRelAssignsToProcess") or []:
+            try:
+                proc = getattr(rel, 'RelatingProcess', None)
+                if proc and hasattr(proc, 'id') and proc.id() in task_ids:
+                    for obj in getattr(rel, 'RelatedObjects', []) or []:
+                        if obj.is_a('IfcElement') or obj.is_a('IfcProduct'):
+                            scheduled.add(obj.id())
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return scheduled
+
+
+def build_unscheduled_df(ifc_file):
+    rows = []
+    scheduled_ids = get_scheduled_element_ids(ifc_file)
+    try:
+        elements = ifc_file.by_type('IfcElement') or []
+    except Exception:
+        elements = []
+    for el in elements:
+        try:
+            eid = el.id() if hasattr(el, 'id') else None
+            if eid in scheduled_ids:
+                continue
+            container = None
+            try:
+                c = ifc_element.get_container(el)
+                container = c.Name if c is not None else None
+            except Exception:
+                container = None
+            tname = None
+            try:
+                t = ifc_element.get_type(el)
+                tname = t.Name if t is not None else None
+            except Exception:
+                tname = None
+            rows.append({
+                'ExpressId': eid,
+                'GlobalId': getattr(el, 'GlobalId', None),
+                'Class': el.is_a() if hasattr(el, 'is_a') else None,
+                'Name': getattr(el, 'Name', None),
+                'Level': container,
+                'Type': tname,
+            })
+        except Exception:
+            continue
+    return pd.DataFrame(rows)
 
 
 def build_nesting_df(ifc_file) -> pd.DataFrame:
@@ -397,144 +563,9 @@ def build_nesting_df(ifc_file) -> pd.DataFrame:
         })
     return pd.DataFrame(rows)
 
-
-def build_all_tasks_df(ifc_file, schedule_id: int | None = None) -> pd.DataFrame:
-    if schedule_id:
-        ws = ifc_file.by_id(int(schedule_id))
-        if not ws:
-            return pd.DataFrame()
-        return build_tasks_df(ws)
-    rows = []
-    for ws in ifc_file.by_type('IfcWorkSchedule') or []:
-        df = build_tasks_df(ws)
-        if not df.empty:
-            df = df.copy(); df['WorkSchedule'] = getattr(ws, 'Name', None)
-            rows.append(df)
-    if rows:
-        out = pd.concat(rows, ignore_index=True)
-        try:
-            out = out.sort_values(by=['Start', 'Finish'], na_position='last')
-        except Exception:
-            pass
-        return out
-    return pd.DataFrame()
-
-
-def create_tasks(model, element_ids: list[int], name_prefix: str = "Task", identification_prefix: str | None = None,
-                 start_date=None, start_time=None, finish_date=None, finish_time=None, duration_iso: str | None = None,
-                 mode: str = "per_element") -> int:
-    if not element_ids:
-        return 0
-    s_iso = None; f_iso = None
-    try:
-        if start_date and start_time:
-            s_iso = datetime.datetime.combine(start_date, start_time).isoformat()
-    except Exception:
-        s_iso = None
-    try:
-        if finish_date and finish_time:
-            f_iso = datetime.datetime.combine(finish_date, finish_time).isoformat()
-    except Exception:
-        f_iso = None
-
-    created = 0
-    if mode == "single":
-        tname = name_prefix.strip() or "Task"
-        ident = (identification_prefix or None)
-        try:
-            task = model.create_entity('IfcTask', Name=tname, Identification=ident)
-        except Exception:
-            task = None
-        if task:
-            if s_iso or f_iso or duration_iso:
-                try:
-                    tt = model.create_entity('IfcTaskTime', ScheduleStart=s_iso, ScheduleFinish=f_iso, ScheduleDuration=duration_iso)
-                    try:
-                        task.TaskTime = tt
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-            objs = [model.by_id(int(e)) for e in element_ids if model.by_id(int(e)) is not None]
-            if objs:
-                try:
-                    ifc.api.run('sequence.assign_process', model, relating_process=task, related_objects=objs)
-                except Exception:
-                    try:
-                        model.create_entity('IfcRelAssignsToProcess', GlobalId=new_guid(), RelatingProcess=task, RelatedObjects=objs)
-                    except Exception:
-                        pass
-            created = 1
-    else:
-        for eid in element_ids:
-            el = model.by_id(int(eid))
-            if not el:
-                continue
-            tname = f"{name_prefix}_{eid}" if name_prefix else f"Task_{eid}"
-            ident = (f"{identification_prefix}{eid}" if identification_prefix else None)
-            try:
-                task = model.create_entity('IfcTask', Name=tname, Identification=ident)
-            except Exception:
-                task = None
-            if not task:
-                continue
-            if s_iso or f_iso or duration_iso:
-                try:
-                    tt = model.create_entity('IfcTaskTime', ScheduleStart=s_iso, ScheduleFinish=f_iso, ScheduleDuration=duration_iso)
-                    try:
-                        task.TaskTime = tt
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-            try:
-                ifc.api.run('sequence.assign_process', model, relating_process=task, related_objects=[el])
-            except Exception:
-                try:
-                    model.create_entity('IfcRelAssignsToProcess', GlobalId=new_guid(), RelatingProcess=task, RelatedObjects=[el])
-                except Exception:
-                    pass
-            created += 1
-    return created
-
-
-def create_tasks_for_elements_in_schedule(model, schedule_id: int, element_ids: list[int], task_name_prefix: str = 'Task') -> int:
-    """Crea una task per ogni elemento e la inserisce nella WorkSchedule, collegando elemento (RelAssignsToProcess) e schedule (RelAssignsToControl)."""
-    sched = model.by_id(int(schedule_id)) if schedule_id else None
-    if not sched or not element_ids:
-        return 0
-    created = 0
-    for eid in element_ids:
-        el = model.by_id(int(eid))
-        if not el:
-            continue
-        task = None
-        try:
-            task = ifc.api.run('sequence.add_task', model, work_schedule=sched, name=f"{task_name_prefix}_{eid}")
-        except Exception:
-            try:
-                task = model.create_entity('IfcTask', Name=f"{task_name_prefix}_{eid}")
-            except Exception:
-                task = None
-        if not task:
-            continue
-        try:
-            ifc.api.run('sequence.assign_process', model, relating_process=task, related_objects=[el])
-        except Exception:
-            try:
-                model.create_entity('IfcRelAssignsToProcess', GlobalId=new_guid(), RelatingProcess=task, RelatedObjects=[el])
-            except Exception:
-                pass
-        try:
-            ifc.api.run('control.assign_control', model, relating_control=sched, related_objects=[task])
-        except Exception:
-            try:
-                model.create_entity('IfcRelAssignsToControl', GlobalId=new_guid(), RelatingControl=sched, RelatedObjects=[task])
-            except Exception:
-                pass
-        created += 1
-    return created
-
+# ------------------------------
+# Calendari
+# ------------------------------
 
 def list_work_calendars(model):
     try:
@@ -752,7 +783,6 @@ def link_work_plan_to_project(model, work_plan_or_id) -> bool:
         if not projects:
             return False
         project = projects[0]
-        # Create IfcRelDeclares from project to work plan
         try:
             model.create_entity('IfcRelDeclares', GlobalId=new_guid(), RelatingContext=project, RelatedDefinitions=[wp])
             return True
@@ -760,3 +790,184 @@ def link_work_plan_to_project(model, work_plan_or_id) -> bool:
             return False
     except Exception:
         return False
+
+# Aggiungi un formatter ISO semplice (usato in vecchi helper)
+def format_date_from_iso(iso_date=None):
+    try:
+        return datetime.datetime.fromisoformat(iso_date).strftime('%d %b %y') if iso_date else ''
+    except Exception:
+        return ''
+
+# Aggiungi creazione CostSchedule minimale (compatibilità)
+def create_cost_schedule(model, name=None):
+    try:
+        ifcopenshell.api.run('cost.add_cost_schedule', model, name=name)
+    except Exception:
+        pass
+
+# UI helpers (Streamlit) — copiati da vecchio ifc_3D per compatibilità
+
+def get_selectable_elements(filter_type='IfcProduct'):
+    if not getattr(session, 'ifc_file', None):
+        return []
+    try:
+        return session.ifc_file.by_type(filter_type)
+    except Exception:
+        return []
+
+
+def draw_filter_selector():
+    st.markdown('**Filter elements**')
+    filter_mode = st.selectbox('Filter mode', ['By Type', 'By Property', 'By Level'], key='filter_mode_4d')
+    filtered = []
+    if filter_mode == 'By Type':
+        type_options = ['IfcProduct', 'IfcElement', 'IfcBuildingElement', 'IfcWall', 'IfcWindow', 'IfcDoor']
+        sel_type = st.selectbox('Element type', type_options, key='filter_type_selector')
+        if getattr(session, 'ifc_file', None):
+            try:
+                filtered = session.ifc_file.by_type(sel_type)
+            except Exception:
+                filtered = []
+    elif filter_mode == 'By Level':
+        levels = []
+        if getattr(session, 'ifc_file', None):
+            for lt in ('IfcBuildingStorey', 'IfcLevel'):
+                try:
+                    levels.extend(session.ifc_file.by_type(lt) or [])
+                except Exception:
+                    continue
+        level_options = [f"{l.id()} - {getattr(l, 'Name', str(l))}" for l in levels]
+        selected_level = st.selectbox('Select Level (Building Storey)', [''] + level_options, key='filter_level_selector')
+        if selected_level:
+            level_id = int(selected_level.split(' - ', 1)[0])
+            level = session.ifc_file.by_id(level_id)
+            elems = []
+            try:
+                for inv in session.ifc_file.get_inverse(level) or []:
+                    related = getattr(inv, 'RelatedElements', None)
+                    if related:
+                        for el in related:
+                            elems.append(el)
+                seen = set(); result = []
+                for e in elems:
+                    eid = e.id() if hasattr(e, 'id') else None
+                    if eid and eid not in seen:
+                        result.append(e); seen.add(eid)
+                filtered = result
+            except Exception:
+                filtered = []
+    else:
+        prop_options = ['Name', 'GlobalId', 'Tag', 'PredefinedType', 'ObjectType']
+        prop = st.selectbox('Property', prop_options, key='filter_prop_selector')
+        op = st.selectbox('Operator', ['contains', 'equals', 'startswith', 'endswith'], key='filter_op_selector')
+        val = st.text_input('Value', key='filter_value_4d')
+        elems = []
+        if getattr(session, 'ifc_file', None):
+            for t in ['IfcProduct', 'IfcElement']:
+                try:
+                    elems.extend(session.ifc_file.by_type(t) or [])
+                except Exception:
+                    continue
+        for el in elems:
+            try:
+                attr = getattr(el, prop) if hasattr(el, prop) else el.get_info().get(prop)
+            except Exception:
+                attr = None
+            if attr is None:
+                continue
+            s = str(attr)
+            match = False
+            if op == 'contains' and val.lower() in s.lower():
+                match = True
+            elif op == 'equals' and s.lower() == val.lower():
+                match = True
+            elif op == 'startswith' and s.lower().startswith(val.lower()):
+                match = True
+            elif op == 'endswith' and s.lower().endswith(val.lower()):
+                match = True
+            if match:
+                filtered.append(el)
+    st.caption(f"Filtered elements: {len(filtered)}")
+    return filtered
+
+
+def draw_schedule_manager():
+    st.subheader('WorkPlan / Schedule / Task Manager')
+    elements = draw_filter_selector()
+    options = [f"{el.id()} - {getattr(el, 'Name', str(el))}" for el in elements]
+    selected_options = st.multiselect('Select elements', options, key='selected_elements_list')
+    selected_ids = [int(s.split(' - ', 1)[0]) for s in selected_options]
+
+    st.text_input('WorkPlan name', key='workplan_name')
+    if st.button('Create IfcWorkPlan for selected elements', key='create_workplan_button'):
+        create_work_plan_for_selected(getattr(session, 'workplan_name', None), selected_ids)
+
+    workplans = session.ifc_file.by_type('IfcWorkPlan') if getattr(session, 'ifc_file', None) else []
+    wp_options = [f"{wp.id()} - {getattr(wp, 'Name', str(wp))}" for wp in workplans]
+    selected_wp = st.selectbox('Select existing WorkPlan', [''] + wp_options, key='select_workplan')
+    wp_id = int(selected_wp.split(' - ', 1)[0]) if selected_wp else None
+
+    schedules = session.ifc_file.by_type('IfcWorkSchedule') if getattr(session, 'ifc_file', None) else []
+    sched_options = [f"{s.id()} - {getattr(s, 'Name', str(s))}" for s in schedules]
+    selected_sched = st.selectbox('Select Schedule to assign', [''] + sched_options, key='select_schedule_to_assign')
+    sched_id = int(selected_sched.split(' - ', 1)[0]) if selected_sched else None
+
+    if st.button('Assign Schedule to WorkPlan', key='assign_schedule_button'):
+        if wp_id and sched_id:
+            assign_schedule_to_workplan(wp_id, sched_id)
+        else:
+            st.error('Please select valid WorkPlan and Schedule')
+
+    st.text_input('Task name prefix', key='task_name_prefix', value='Task')
+    if st.button('Create IfcTask for selected elements', key='create_tasks_button'):
+        create_task_for_selected(sched_id, selected_ids, getattr(session, 'task_name_prefix', 'Task'))
+
+
+def create_work_plan_for_selected(name, selected_ids):
+    if not name:
+        st.error('Please enter a name for the WorkPlan')
+        return None
+    if not getattr(session, 'ifc_file', None):
+        st.error('No IFC file loaded in session')
+        return None
+    try:
+        wp = session.ifc_file.create_entity('IfcWorkPlan', Name=name)
+        st.success('IfcWorkPlan created')
+        st.info('Note: associations with selected elements are not automatically created.')
+        return wp
+    except Exception as e:
+        st.error(f'Error creating WorkPlan: {e}')
+        return None
+
+
+def assign_schedule_to_workplan(workplan_id, schedule_id):
+    if not getattr(session, 'ifc_file', None):
+        st.error('No IFC file loaded in session')
+        return
+    try:
+        wp = session.ifc_file.by_id(int(workplan_id))
+        sched = session.ifc_file.by_id(int(schedule_id))
+        if not wp or not sched:
+            st.error('WorkPlan or Schedule not found in the IFC file')
+            return
+        st.success('Schedule assignment noted. Implement relational linking as needed.')
+    except Exception as e:
+        st.error(f'Error assigning schedule: {e}')
+
+
+def create_task_for_selected(schedule_id, selected_ids, task_name_prefix='Task'):
+    if not getattr(session, 'ifc_file', None):
+        st.error('No IFC file loaded in session')
+        return
+    if not selected_ids:
+        st.error('No elements selected to create tasks for')
+        return
+    created = 0
+    try:
+        for eid in selected_ids:
+            name = f"{task_name_prefix}_{eid}"
+            session.ifc_file.create_entity('IfcTask', Name=name)
+            created += 1
+        st.success(f'Created {created} tasks (associations to schedules not created automatically)')
+    except Exception as e:
+        st.error(f'Error creating tasks: {e}')

@@ -1,7 +1,25 @@
 # ─────────────────────────────────────────────
-# 📦 Importazioni
+# 📦 Imports (standardized)
 # ─────────────────────────────────────────────
 import streamlit as st
+from tools import p3_bcf as p3  # per-page helper
+from tools import p_shared as shared  # shared model info helpers
+
+# ─────────────────────────────────────────────
+# 🧠 Session alias
+# ─────────────────────────────────────────────
+session = st.session_state
+
+# -----------------------------
+# ORGANIZZAZIONE DELLA PAGINA
+# -----------------------------
+# 1) initialize_session_state — init page state
+# 2) support functions — UI/data helpers (no ifcopenshell here)
+# 3) execute — main entry point building the UI
+
+# ─────────────────────────────────────────────
+# 📦 Importazioni
+# ─────────────────────────────────────────────
 import json
 import textwrap
 import re
@@ -183,3 +201,5 @@ else:
             st.error(f"Error generating .bcfzip file: {e}")
     else:
         st.info("Select at least one issue to enable exports.")
+
+# Uniform page structure applied. If you still have direct ifcopenshell logic here, consider moving it into the corresponding tools module (p0..p8) for consistency.

@@ -47,10 +47,6 @@ python -m streamlit run Home.py
 4) DataFrame Visualiser
    - View tabular data and export to Excel or CSV.
 
-## Process Overview
-Below is a high-level workflow of the application. Place the diagram image at `docs/process.png` in this repository so it renders on GitHub.
-
-![Process Overview](docs/process-diagram.png)
 
 ### High-level Steps
 1) Home: Import an IFC file.

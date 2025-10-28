@@ -1,35 +1,26 @@
 # ─────────────────────────────────────────────
-# 📦 Importazioni
+# 📦 Imports (standardized)
 # ─────────────────────────────────────────────
-import streamlit as st  # UI e layout dell'app
-import json  # lettura/scrittura file IDS/Config
-import pandas as pd  # tabelle risultati e aggregazioni
-import plotly.express as px  # grafici di conformità
-import io  # buffer file (supporto ad esportazioni)
-import zipfile  # pacchetti BCF (altra pagina)
-import tempfile  # gestione file temporanei
-from datetime import datetime  # timestamp in XML e report
-from fpdf import FPDF  # report PDF (altra pagina)
-import textwrap  # formattazione testi per report PDF
-import re  # semplici controlli/normalizzazioni testuali
-from tools import ifchelper  # helper IFC condivisi
-from tools.pathhelper import save_text, save_bytes  # funzioni per salvare file temporanei
-# Import validate function from helper (moved to tools.ifchelper to centralize IFC logic)
-from tools.ifchelper import validate_ifc_with_ids  # validazione IFC rispetto alle regole IDS
+import streamlit as st
+from tools import p_shared as shared  # shared model info helpers
+from tools import p2_ids as p2  # per-page helper
+import json
+from tools.pathhelper import save_text, save_bytes
+import plotly.express as px
+from datetime import datetime
+import pandas as pd
 
 # ─────────────────────────────────────────────
-# 🧠 Alias per lo stato della sessione Streamlit
+# 🧠 Session alias
 # ─────────────────────────────────────────────
 session = st.session_state
 
 # -----------------------------
 # ORGANIZZAZIONE DELLA PAGINA
 # -----------------------------
-# Panoramica funzioni/aree (in italiano):
-# - validate_ifc_with_ids -> USATA: Tab IDS Validation Results e Automatic Test; SCOPO: valida IFC rispetto a regole IDS
-# - Sidebar rule creator -> USATA: Sidebar; SCOPO: creare regole IDS
-# - Tab outputs -> USATA: vari tab; SCOPO: mostrare regole, risultati, test e XML
-
+# 1) initialize_session_state — init page state
+# 2) support functions — UI/data helpers (no ifcopenshell here)
+# 3) execute — main entry point building the UI
 
 # ─────────────────────────────────────────────
 # 📚 Funzioni di supporto
@@ -40,7 +31,6 @@ def validate_ifc_with_ids(ifc_file, ids_rules):
     Restituisce un DataFrame Pandas con:
     ElementID, ElementName, IFCClass, PropertySet, PropertyName, Value, Compliant
     """
-    import pandas as pd
     import ifcopenshell
     from ifcopenshell.util import element as ifc_element
 

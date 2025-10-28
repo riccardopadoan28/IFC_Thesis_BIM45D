@@ -10,31 +10,30 @@
 # 6) execute -> ENTRY POINT: costruisce UI, tab e sidebar (output in inglese)
 
 # ─────────────────────────────────────────────
-# 📦 Importazioni (solo quelle necessarie)
+# 📦 Imports (standardized)
 # ─────────────────────────────────────────────
 import datetime
 import re
 
 import ifcopenshell as ifc
-import ifcopenshell
 import ifcopenshell.api.sequence
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from tools import p_shared as shared  # shared model info helpers
 
 from ifcopenshell.guid import new as new_guid
 from ifcopenshell.util.element import get_decomposition
 from ifcopenshell.util import element as ifc_element
 from ifcopenshell.guid import new as new_guid
 
-from tools import ifc4D as ifc4d
+# Add per-page helper import (non-invasivo)
+from tools import p7_4d as p7  # per-page helper
 
 # ─────────────────────────────────────────────
-# 🧠 Alias per lo stato della sessione Streamlit
+# 🧠 Session alias
 # ─────────────────────────────────────────────
-session = st.session_state 
-
-# Rimuovo gli helper IfcOpenShell locali e uso solo ifc4d
+session = st.session_state
 
 # ─────────────────────────────────────────────
 # 🔁 Funzioni spostate da tools.ifchelper e rese locali a questa pagina
@@ -71,7 +70,7 @@ def load_work_schedules():
     session["SequenceData"]["schedules"] = session.ifc_file.by_type("IfcWorkSchedule")
     session["SequenceData"]["tasks"] = session.ifc_file.by_type("IfcTask")
     session["SequenceData"]["ScheduleData"] = [
-        {"Id": schedule.id(), "Data": ifc4d.get_schedule_tasks(schedule)}
+        {"Id": schedule.id(), "Data": p7.get_schedule_tasks(schedule)}
         for schedule in session.ifc_file.by_type("IfcWorkSchedule")
     ]
 
@@ -95,7 +94,7 @@ def add_work_schedule():
     except Exception:
         finish_dt = None
 
-    ifc4d.create_work_schedule(
+    p7.create_work_schedule(
         session.ifc_file,
         name=session.get("schedule_input"),
         identification=session.get("ws_identification"),
@@ -143,7 +142,7 @@ def draw_schedules():
     h1.markdown("**Id**"); h2.markdown("**Name**"); h3.markdown("**TaskCount**"); h4.markdown("**Delete**")
     for ws in schedules:
         try:
-            task_count = len(ifc4d.get_schedule_tasks(ws))
+            task_count = len(p7.get_schedule_tasks(ws))
         except Exception:
             task_count = 0
         c1, c2, c3, c4 = st.columns([1, 5, 2, 2])
@@ -169,8 +168,8 @@ def draw_task():
     rows = []
     for t in tasks_list[:200]:
         tt = getattr(t, 'TaskTime', None)
-        s = ifc4d._to_datetime(getattr(tt, 'ScheduleStart', None)) if tt else None
-        f = ifc4d._to_datetime(getattr(tt, 'ScheduleFinish', None)) if tt else None
+        s = p7._to_datetime(getattr(tt, 'ScheduleStart', None)) if tt else None
+        f = p7._to_datetime(getattr(tt, 'ScheduleFinish', None)) if tt else None
         rows.append({
             "Id": (t.id() if hasattr(t, 'id') else None),
             "Name": getattr(t, 'Name', None),
@@ -196,14 +195,14 @@ def draw_workplan():
     st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
 def assign_elements_to_schedule(schedule_id, element_ids, task_name_prefix='Task'):
-    """Crea IfcTask per gli elementi selezionati dentro una WorkSchedule e collega process/control (usa ifc4d)."""
+    """Crea IfcTask per gli elementi selezionati dentro una WorkSchedule e collega process/control (usa p7)."""
     if not schedule_id:
         st.error('Please select a WorkSchedule')
         return
     if not element_ids:
         st.error('No selected elements to assign')
         return
-    created = ifc4d.create_tasks_for_elements_in_schedule(session.ifc_file, int(schedule_id), element_ids, task_name_prefix)
+    created = p7.create_tasks_for_elements_in_schedule(session.ifc_file, int(schedule_id), element_ids, task_name_prefix)
     if created:
         try:
             load_work_schedules()
@@ -489,7 +488,7 @@ def execute():
                         ids = [int(r['Id']) for _, r in edited_wp.iterrows() if r.get('Delete')]
                         deleted = 0
                         for pid in ids:
-                            if ifc4d.delete_work_plan(session.ifc_file, pid):
+                            if p7.delete_work_plan(session.ifc_file, pid):
                                 deleted += 1
                         if deleted:
                             st.success(f"Deleted {deleted} WorkPlan(s)")
@@ -537,7 +536,7 @@ def execute():
                         ids = [int(r['Id']) for _, r in edited_t.iterrows() if r.get('Delete')]
                         deleted = 0
                         for tid in ids:
-                            if ifc4d.delete_task(session.ifc_file, tid):
+                            if p7.delete_task(session.ifc_file, tid):
                                 deleted += 1
                         if deleted:
                             st.success(f"Deleted {deleted} Task(s)")
@@ -596,7 +595,7 @@ def execute():
             else:
                 current_pid = int(sel_wp_mgr.split(' - ',1)[0])
                 wp_obj = session.ifc_file.by_id(current_pid)
-                attrs = ifc4d.get_work_plan_attrs(wp_obj)
+                attrs = p7.get_work_plan_attrs(wp_obj)
 
             c1, c2 = st.columns(2)
             with c1:
@@ -636,9 +635,9 @@ def execute():
 
             if st.button("Save WorkPlan", key="btn_save_wp_unified"):
                 if creating_new:
-                    created = ifc4d.create_work_plan(session.ifc_file, new_name or "Work Plan")
+                    created = p7.create_work_plan(session.ifc_file, new_name or "Work Plan")
                     if created:
-                        ok = ifc4d.update_work_plan(
+                        ok = p7.update_work_plan(
                             session.ifc_file,
                             created.id(),
                             name=new_name or None,
@@ -652,7 +651,7 @@ def execute():
                             duration_iso=dur_iso or None,
                             total_float_iso=tf_iso or None,
                         )
-                        linked = ifc4d.link_work_plan_to_project(session.ifc_file, created)
+                        linked = p7.link_work_plan_to_project(session.ifc_file, created)
                         if ok:
                             st.success("WorkPlan created and saved")
                         else:
@@ -664,7 +663,7 @@ def execute():
                     else:
                         st.error("Failed to create WorkPlan")
                 else:
-                    ok = ifc4d.update_work_plan(
+                    ok = p7.update_work_plan(
                         session.ifc_file,
                         current_pid,
                         name=new_name or None,
@@ -690,7 +689,7 @@ def execute():
                 ssel = st.selectbox("WorkSchedule", [f"{s.id()} - {getattr(s,'Name',str(s))}" for s in scheds], key="sel_ws_for_plan", help="WorkSchedule to be aggregated under the selected WorkPlan.")
                 pid2 = int(psel2.split(' - ',1)[0]); sid2 = int(ssel.split(' - ',1)[0])
                 if st.button("Aggregate schedule to plan", key="btn_aggr_ws_wp"):
-                    ok = ifc4d.aggregate_schedule_to_workplan(session.ifc_file, pid2, sid2)
+                    ok = p7.aggregate_schedule_to_workplan(session.ifc_file, pid2, sid2)
                     if ok:
                         st.success("Aggregated")
                     else:
@@ -715,7 +714,7 @@ def execute():
                 It is the “operational” calendar which tasks and resources reference via IfcRelAssignsToControl.
                 """
             )
-            df_cal = ifc4d.build_calendars_df(session.ifc_file)
+            df_cal = p7.build_calendars_df(session.ifc_file)
             st.dataframe(df_cal, use_container_width=True)
             st.markdown("---")
             st.subheader("Create calendar")
@@ -724,14 +723,14 @@ def execute():
             cobj = st.text_input("ObjectType", key="wc_object_type", help="Required when PredefinedType is USERDEFINED.")
             cdesc = st.text_input("Description", key="wc_desc", help="Optional description")
             if st.button("Create WorkCalendar", key="btn_create_wc"):
-                wc = ifc4d.create_work_calendar(session.ifc_file, cname or None, ctype, cdesc or None, (cobj or None))
+                wc = p7.create_work_calendar(session.ifc_file, cname or None, ctype, cdesc or None, (cobj or None))
                 if wc:
                     st.success("WorkCalendar created")
                 else:
                     st.error("Failed to create WorkCalendar (check ObjectType when USERDEFINED)")
             st.markdown("---")
             st.subheader("Base calendar (inheritance)")
-            calendars = ifc4d.list_work_calendars(session.ifc_file)
+            calendars = p7.list_work_calendars(session.ifc_file)
             if calendars and len(calendars) > 1:
                 child_sel = st.selectbox("Child calendar", [f"{c.id()} - {getattr(c,'Name',str(c))}" for c in calendars], key="wc_child", help="Calendar that will inherit from a base calendar.")
                 base_sel = st.selectbox("Base calendar", [f"{c.id()} - {getattr(c,'Name',str(c))}" for c in calendars], key="wc_base", help="Base calendar providing default working times.")
@@ -741,7 +740,7 @@ def execute():
                         if child_id == base_id:
                             st.warning("Child and base calendars must be different")
                         else:
-                            ok = ifc4d.link_base_calendar(session.ifc_file, child_id, base_id)
+                            ok = p7.link_base_calendar(session.ifc_file, child_id, base_id)
                             if ok:
                                 st.success("Linked")
                             else:
@@ -750,7 +749,7 @@ def execute():
                         st.error("Invalid selection")
             st.markdown("---")
             st.subheader("Add working/exception time")
-            calendars = ifc4d.list_work_calendars(session.ifc_file)
+            calendars = p7.list_work_calendars(session.ifc_file)
             if calendars:
                 selc = st.selectbox("Calendar", [f"{c.id()} - {getattr(c,'Name',str(c))}" for c in calendars], key="wc_sel", help="Calendar to which the time period will be added.")
                 cal_id = int(selc.split(' - ',1)[0])
@@ -769,7 +768,7 @@ def execute():
                     except Exception:
                         return None
                 if st.button("Add time", key="btn_add_wt"):
-                    ok = ifc4d.add_calendar_time(session.ifc_file, cal_id, tname or None, to_iso(sd, stime), to_iso(fd, ftime), is_exception=is_exc)
+                    ok = p7.add_calendar_time(session.ifc_file, cal_id, tname or None, to_iso(sd, stime), to_iso(fd, ftime), is_exception=is_exc)
                     if ok:
                         st.success("Added")
                     else:
@@ -787,7 +786,7 @@ def execute():
                 opts = st.multiselect("Objects", [f"{o.id()} - {getattr(o,'Name',str(o))}" for o in items], key="wc_objs", help="Pick one or more target objects.")
                 ids = [int(x.split(' - ',1)[0]) for x in opts]
                 if st.button("Assign calendar to selected", key="btn_assign_cal"):
-                    n = ifc4d.assign_calendar_to_objects(session.ifc_file, cal_id2, ids)
+                    n = p7.assign_calendar_to_objects(session.ifc_file, cal_id2, ids)
                     if n:
                         st.success(f"Assigned to {n} object(s)")
                     else:
@@ -798,7 +797,7 @@ def execute():
                 seld = st.selectbox("Calendar to delete", [f"{c.id()} - {getattr(c,'Name',str(c))}" for c in calendars], key="wc_del", help="Select a calendar to delete (only the calendar object is removed).")
                 del_id = int(seld.split(' - ',1)[0])
                 if st.button("Delete WorkCalendar", key="btn_del_wc"):
-                    ok = ifc4d.delete_work_calendar(session.ifc_file, del_id)
+                    ok = p7.delete_work_calendar(session.ifc_file, del_id)
                     if ok:
                         st.success("Calendar deleted")
                     else:
@@ -850,7 +849,7 @@ def execute():
             else:
                 current_ws_id = int(sel_ws_mgr.split(' - ',1)[0])
                 ws_obj = session.ifc_file.by_id(current_ws_id)
-                ws_attrs = ifc4d.get_work_schedule_attrs(ws_obj)
+                ws_attrs = p7.get_work_schedule_attrs(ws_obj)
             c1, c2 = st.columns(2)
             with c1:
                 ws_name = st.text_input("Name", value=(ws_attrs.get('Name') or ''), key="ws_form_name")
@@ -891,7 +890,7 @@ def execute():
                     st.error("ObjectType is required when PredefinedType is USERDEFINED")
                 else:
                     if creating_ws:
-                        ws = ifc4d.create_work_schedule(
+                        ws = p7.create_work_schedule(
                             session.ifc_file,
                             name=(ws_name or "Work Schedule"),
                             identification=(ws_ident or None),
@@ -905,12 +904,12 @@ def execute():
                             total_float_iso=(ws_tf or None),
                         )
                         if ws:
-                            ifc4d.link_work_schedule_to_project(session.ifc_file, ws)
+                            p7.link_work_schedule_to_project(session.ifc_file, ws)
                             st.success("WorkSchedule created")
                         else:
                             st.error("Failed to create WorkSchedule")
                     else:
-                        ok = ifc4d.update_work_schedule(
+                        ok = p7.update_work_schedule(
                             session.ifc_file,
                             current_ws_id,
                             name=(ws_name or None),
@@ -938,7 +937,7 @@ def execute():
                 sched_options = [f"{s.id()} - {getattr(s,'Name',str(s))}" for s in scheds]
                 sel = st.selectbox("WorkSchedule", sched_options, index=0, key="sch_sel", help="WorkSchedule that will receive the selected tasks.")
                 sel_id = int(sel.split(' - ',1)[0]) if sel else None
-                unassigned = ifc4d.get_unassigned_tasks(session.ifc_file)
+                unassigned = p7.get_unassigned_tasks(session.ifc_file)
                 if not unassigned:
                     st.info("No unassigned tasks. Create tasks in the next tab (Tasks), then return here to assign them.")
                 else:
@@ -946,7 +945,7 @@ def execute():
                     chosen = st.multiselect("Tasks to assign", task_options, key="tasks_to_assign", help="Select one or more unassigned tasks to add to the WorkSchedule.")
                     chosen_ids = [int(x.split(' - ',1)[0]) for x in chosen]
                     if st.button("Assign selected to schedule", key="btn_assign_tasks_to_ws"):
-                        assigned = ifc4d.assign_tasks_to_schedule(session.ifc_file, sel_id, chosen_ids)
+                        assigned = p7.assign_tasks_to_schedule(session.ifc_file, sel_id, chosen_ids)
                         if assigned:
                             st.success(f"Assigned {assigned} tasks to schedule")
             st.button("💾 Save File", key="save_file_tab_sched", on_click=save_file)
@@ -955,7 +954,7 @@ def execute():
         # Tasks 
         with tab_elements_tasks:
             st.subheader("Select elements and create tasks")
-            df_unscheduled = ifc4d.build_unscheduled_df(session.ifc_file)
+            df_unscheduled = p7.build_unscheduled_df(session.ifc_file)
             if df_unscheduled is None or df_unscheduled.empty:
                 st.info("No elements found or all already scheduled.")
             else:
@@ -1016,7 +1015,7 @@ def execute():
                     help="Optional duration in ISO 8601 (e.g., P5D, P1W). Used if finish is not provided.",
                 )
                 if st.button("Create tasks", key="el_create_tasks"):
-                    created = ifc4d.create_tasks(session.ifc_file, session.get("selected_element_ids", []), name_prefix, (ident_prefix or None), sd, stime, fd, ftime, (duration_iso or None), ("per_element" if mode=="One task per element" else "single"))
+                    created = p7.create_tasks(session.ifc_file, session.get("selected_element_ids", []), name_prefix, (ident_prefix or None), sd, stime, fd, ftime, (duration_iso or None), ("per_element" if mode=="One task per element" else "single"))
                     st.success(f"Created {created} task(s)")
                 st.button("💾 Save File", key="save_file_tab_elements", on_click=save_file)
 
@@ -1024,7 +1023,7 @@ def execute():
         # Nesting & Gantt
         with tab_nesting:
             st.subheader("Nesting overview")
-            df_nesting = ifc4d.build_nesting_df(session.ifc_file)
+            df_nesting = p7.build_nesting_df(session.ifc_file)
             st.dataframe(df_nesting, use_container_width=True)
             st.markdown("---")
             st.subheader("Delete entities")
@@ -1034,7 +1033,7 @@ def execute():
                 tsel = st.selectbox("Task to delete", ["Select"] + [f"{t.id()} - {getattr(t,'Name',str(t))}" for t in tasks], key="del_task_sel", help="Choose a task to delete from the model.")
                 if tsel != "Select" and st.button("Delete task", key="btn_del_task"):
                     tid = int(tsel.split(' - ',1)[0])
-                    if ifc4d.delete_task(session.ifc_file, tid): st.success("Task deleted")
+                    if p7.delete_task(session.ifc_file, tid): st.success("Task deleted")
             with coly:
                 scheds = session.ifc_file.by_type('IfcWorkSchedule') or []
                 ssel = st.selectbox("Schedule to delete", ["Select"] + [f"{s.id()} - {getattr(s,'Name',str(s))}" for s in scheds], key="del_sched_sel", help="Choose a WorkSchedule to delete from the model.")
@@ -1046,14 +1045,14 @@ def execute():
                 psel = st.selectbox("WorkPlan to delete", ["Select"] + [f"{p.id()} - {getattr(p,'Name',str(p))}" for p in plans], key="del_plan_sel", help="Choose a WorkPlan to delete from the model.")
                 if psel != "Select" and st.button("Delete plan", key="btn_del_plan"):
                     pid = int(psel.split(' - ',1)[0])
-                    if ifc4d.delete_work_plan(session.ifc_file, pid): st.success("WorkPlan deleted")
+                    if p7.delete_work_plan(session.ifc_file, pid): st.success("WorkPlan deleted")
             st.markdown("---")
             st.subheader("Gantt")
             scheds = session.ifc_file.by_type('IfcWorkSchedule') or []
             options = ["All schedules"] + [f"{s.id()} - {getattr(s,'Name',str(s))}" for s in scheds]
             sel = st.selectbox("Scope", options, key="gantt_scope", help="Select a specific WorkSchedule to plot, or 'All schedules'.")
             sch_id = None if sel == "All schedules" else int(sel.split(' - ',1)[0])
-            df_tasks = ifc4d.build_all_tasks_df(session.ifc_file, sch_id)
+            df_tasks = p7.build_all_tasks_df(session.ifc_file, sch_id)
             if df_tasks is None or df_tasks.empty:
                 st.info("No tasks with dates to plot.")
             else:

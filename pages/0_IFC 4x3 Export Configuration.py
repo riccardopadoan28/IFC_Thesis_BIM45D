@@ -1,21 +1,24 @@
 # ─────────────────────────────────────────────
-# 📦 Importazioni
+# 📦 Imports (standardized)
 # ─────────────────────────────────────────────
 import streamlit as st
+from tools import p0_export_config as p0  # per-page helper
+from tools import p_shared as shared  # shared model info helpers
 import json
-from tools.pathhelper import save_text
 from tools.ifc_432_dictionary import IFC_STRUCTURAL_DICTIONARY_4x3
+from tools.pathhelper import save_text
+
+# ─────────────────────────────────────────────
+# 🧠 Session alias
+# ─────────────────────────────────────────────
+session = st.session_state
 
 # -----------------------------
 # ORGANIZZAZIONE DELLA PAGINA
 # -----------------------------
-# Elenco funzioni/zone della pagina e loro scopo (in italiano):
-# 1) get_dictionary -> USATA: export config; SCOPO: restituisce dizionario IFC4x3
-# 2) render_ifc4x3_settings -> USATA: Tab General; SCOPO: form principale per le impostazioni di export
-# 3) Sidebar export rules -> USATA: Sidebar; SCOPO: selezione entità da includere e generazione del filtro ExcludeFilter
-# 4) JSON Output -> USATA: Tab JSON; SCOPO: mostra e scarica la configurazione JSON
-# Nota: le stringhe visibili all'utente sono in inglese; i commenti sono in italiano.
-
+# 1) initialize_session_state — init page state
+# 2) support functions — UI/data helpers (no ifcopenshell here)
+# 3) execute — main entry point building the UI
 
 # ─────────────────────────────────────────────
 # ⚙️ Pagina principale
@@ -376,3 +379,5 @@ with tab_json:
             st.markdown(f"[Click to download]({url})")
         except Exception as e:
             st.error(f"Unable to save: {e}")
+
+# Uniform page structure applied. If you still have direct ifcopenshell logic here, consider moving it into the corresponding tools module (p0..p8) for consistency.

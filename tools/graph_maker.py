@@ -1,4 +1,4 @@
-from tools import ifchelper
+from tools import ifc_3D
 import plotly.express as px
 import pandas as pd
 
@@ -27,9 +27,9 @@ style = {
 # 📈 Grafico: Conteggio elementi di IfcBuildingElement
 # ========================================================
 def get_elements_graph(file, color="#00FFAA", title="Building Objects Count"):
-    types = ifchelper.get_types(file, "IfcBuildingElement")
-    types_count = ifchelper.get_type_occurence(file, types)
-    x_values, y_values = ifchelper.get_x_and_y(types_count)
+    types = ifc_3D.get_types(file, "IfcBuildingElement")
+    types_count = ifc_3D.get_type_occurence(file, types)
+    x_values, y_values = ifc_3D.get_x_and_y(types_count)
 
     if not x_values or not y_values:
         fig = px.bar(title=title)
@@ -65,9 +65,9 @@ def get_elements_graph(file, color="#00FFAA", title="Building Objects Count"):
 def get_high_frequency_entities_graph(
     file, threshold=400, color="#FF3333", title="IFC Entity Types Frequency"
 ):
-    types = ifchelper.get_types(file)
-    types_count = ifchelper.get_type_occurence(file, types)
-    x_values, y_values = ifchelper.get_x_and_y(types_count, higher_then=threshold)
+    types = ifc_3D.get_types(file)
+    types_count = ifc_3D.get_type_occurence(file, types)
+    x_values, y_values = ifc_3D.get_x_and_y(types_count, higher_then=threshold)
 
     if not x_values or not y_values:
         fig = px.bar(title=title)

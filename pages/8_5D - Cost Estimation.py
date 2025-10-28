@@ -1,10 +1,27 @@
 # ─────────────────────────────────────────────
+# 📦 Imports (standardized)
+# ─────────────────────────────────────────────
+import streamlit as st
+from tools import p8_cost_estimation as p8  # per-page helper
+from tools import p_shared as shared  # shared model info helpers
+
+# ─────────────────────────────────────────────
+# 🧠 Session alias
+# ─────────────────────────────────────────────
+session = st.session_state
+
+# -----------------------------
+# ORGANIZZAZIONE DELLA PAGINA
+# -----------------------------
+# 1) initialize_session_state — init page state
+# 2) support functions — UI/data helpers (no ifcopenshell here)
+# 3) execute — main entry point building the UI
+
+# ─────────────────────────────────────────────
 # 📦 Importazioni
 # ─────────────────────────────────────────────
 import ifcopenshell as ifc
-import streamlit as st
-import ifc4d
-from tools import ifchelper
+from tools import ifc_3D
 from tools import graph_maker
 from datetime import datetime
 from email.policy import default
@@ -41,7 +58,7 @@ def load_cost_schedules():
     }
  
 def add_cost_schedule():
-    ifchelper.create_cost_schedule(session.ifc_file, session["cost_input"])
+    ifc_3D.create_cost_schedule(session.ifc_file, session["cost_input"])
     load_cost_schedules()
   
 def draw_schedules():

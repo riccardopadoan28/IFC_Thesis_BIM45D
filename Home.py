@@ -17,7 +17,7 @@ st.sidebar.write("Use the menu above to explore the app pages.")
 # --- CONTENUTO DELLA PAGINA HOME ---
 
 # Titolo principale
-st.title("BIM45D - IFC4x3 Structural Data Management App")
+st.title("ÅBIM45  - IFC4x3 Structural Data Management App")
 st.markdown("OpenBIM platform to create, manage and export IFC4x3 data for BIM 4D/5D workflows. Configure export settings, author IDS rules, validate models, inspect health metrics and export reports from a single interface.")
 
 st.markdown("""
@@ -74,6 +74,6 @@ This app is built with **Streamlit** and integrates with **IfcOpenShell** and **
 
 # Footer
 st.markdown("---")
-st.markdown("© 2025 – BIM45D | Developed by Riccardo Padoan, RSP Group.")
+st.markdown("© 2025 – ÅBIM45 | Developed by RSP CONSULTING.")
 st.markdown("Visit [https://github.com/riccardopadoan28/IFC_Thesis_BIM45D] for more details.")
 st.markdown("All rights reserved. | This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).")
