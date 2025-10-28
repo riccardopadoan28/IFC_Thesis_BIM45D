@@ -8,71 +8,29 @@
   <meta name="theme-color" content="#0f172a" />
   <title>3D Viewer</title>
 
-  <!-- Loader: try local (viewer/lib[/dist]) first, then fallback to CDN -->
+  <!-- Simplified loader: always load from CDN to avoid missing local chunks -->
   <script type="module">
-    async function loadXeokit() {
-      const candidates = [
-        './lib/dist/index.min.js',
-        './lib/dist/index.js',
-        './lib/dist/xeokit-webcomponents.min.js',
-        './lib/dist/xeokit-webcomponents.js',
-        './lib/index.min.js',
-        './lib/index.js',
-        './lib/xeokit-webcomponents.min.js',
-        './lib/xeokit-webcomponents.js',
-        '../node_modules/@xeokit/xeokit-webcomponents/dist/index.min.js',
-        '../node_modules/@xeokit/xeokit-webcomponents/dist/index.js'
-      ];
-      for (const src of candidates) {
-        try { await import(src); console.log('xeokit-webcomponents loaded from', src); return; } catch (e) {}
-      }
-      await import('https://cdn.jsdelivr.net/npm/@xeokit/xeokit-webcomponents/dist/index.min.js');
-      console.warn('xeokit-webcomponents loaded from CDN fallback');
-    }
-    loadXeokit();
+    import 'https://cdn.jsdelivr.net/npm/@xeokit/xeokit-webcomponents/dist/index.min.js';
+    console.log('xeokit-webcomponents loaded from CDN');
   </script>
 
   <style>
-    :root {
-      --bg: #0b1220; /* slate-950 */
-      --panel: #0f172a; /* slate-900 */
-      --muted: #94a3b8; /* slate-400 */
-      --text: #e2e8f0; /* slate-200 */
-      --primary: #38bdf8; /* sky-400 */
-      --accent: #a78bfa; /* violet-400 */
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif; }
-    #app { height: 100vh; display: grid; grid-template-rows: 56px 1fr; }
-
-    /* App Bar */
-    .appbar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: linear-gradient(180deg, rgba(15,23,42,0.7), rgba(15,23,42,0.95)); border-bottom: 1px solid rgba(148,163,184,0.08); backdrop-filter: blur(6px); position: sticky; top: 0; z-index: 5; }
-    .brand { display:flex; align-items:center; gap:10px; font-weight: 600; letter-spacing: .2px; }
-    .brand-badge { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--primary), var(--accent)); box-shadow: 0 0 0 1px rgba(56,189,248,0.3), 0 8px 24px rgba(56,189,248,0.15); }
-    .appbar .spacer { flex: 1; }
-
-    .toolbar { display:flex; gap:8px; align-items:center; }
-    .btn { display:inline-flex; align-items:center; gap:8px; height:34px; padding: 0 12px; border: 1px solid rgba(148,163,184,.18); border-radius: 8px; background: rgba(15,23,42,.6); color: var(--text); cursor: pointer; transition: all .18s ease; }
-    .btn:hover { border-color: rgba(148,163,184,.4); background: rgba(28,38,62,.8); }
-    .btn.primary { border-color: rgba(56,189,248,.5); background: rgba(2,132,199,.2); }
-    .btn svg { width:16px; height:16px; opacity:.9 }
-    .input { height:34px; min-width: 280px; padding: 0 12px; border-radius: 8px; border: 1px solid rgba(148,163,184,.18); background: rgba(2,6,23,0.5); color: var(--text); outline: none; }
-    .input::placeholder { color: var(--muted); }
-
-    /* Viewer area */
-    .stage { position: relative; height: 100%; }
-    xeo-viewer { position:absolute; inset:0; }
-
-    /* Loading overlay */
-    .loading { position: absolute; inset: 0; display: grid; place-items: center; background: radial-gradient(1200px 800px at 50% 20%, rgba(2,6,23,.25), rgba(2,6,23,.85)); z-index: 4; transition: opacity .2s ease; }
-    .loading.hidden { opacity: 0; pointer-events: none; }
-    .spinner { width: 40px; height: 40px; border: 3px solid rgba(148,163,184,.25); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* Dropzone */
-    .dropzone { position: absolute; inset:0; display:none; place-items:center; z-index:6; }
-    .dropzone.active { display:grid; }
-    .dropzone .hint { padding:16px 22px; border-radius:12px; border:1px dashed rgba(148,163,184,.35); background: rgba(2,6,23,.6); color: var(--text); backdrop-filter: blur(4px); }
+    :root { --bg:#0b1220; --panel:#0f172a; --muted:#94a3b8; --text:#e2e8f0; --primary:#38bdf8; --accent:#a78bfa; }
+    *{box-sizing:border-box} html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Inter,Arial,sans-serif}
+    #app{height:100vh;display:grid;grid-template-rows:56px 1fr}
+    .appbar{display:flex;align-items:center;gap:12px;padding:8px 12px;background:linear-gradient(180deg,rgba(15,23,42,.7),rgba(15,23,42,.95));border-bottom:1px solid rgba(148,163,184,.08);backdrop-filter:blur(6px);position:sticky;top:0;z-index:5}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.2px}
+    .brand-badge{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--primary),var(--accent));box-shadow:0 0 0 1px rgba(56,189,248,.3),0 8px 24px rgba(56,189,248,.15)}
+    .appbar .spacer{flex:1}
+    .toolbar{display:flex;gap:8px;align-items:center}
+    .btn{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid rgba(148,163,184,.18);border-radius:8px;background:rgba(15,23,42,.6);color:var(--text);cursor:pointer;transition:all .18s ease}
+    .btn:hover{border-color:rgba(148,163,184,.4);background:rgba(28,38,62,.8)} .btn.primary{border-color:rgba(56,189,248,.5);background:rgba(2,132,199,.2)} .btn svg{width:16px;height:16px;opacity:.9}
+    .input{height:34px;min-width:280px;padding:0 12px;border-radius:8px;border:1px solid rgba(148,163,184,.18);background:rgba(2,6,23,.5);color:var(--text);outline:none} .input::placeholder{color:var(--muted)}
+    .stage{position:relative;height:100%} xeo-viewer{position:absolute;inset:0}
+    .loading{position:absolute;inset:0;display:grid;place-items:center;background:radial-gradient(1200px 800px at 50% 20%,rgba(2,6,23,.25),rgba(2,6,23,.85));z-index:4;transition:opacity .2s ease} .loading.hidden{opacity:0;pointer-events:none}
+    .spinner{width:40px;height:40px;border:3px solid rgba(148,163,184,.25);border-top-color:var(--primary);border-radius:50%;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+    .dropzone{position:absolute;inset:0;display:none;place-items:center;z-index:6} .dropzone.active{display:grid}
+    .dropzone .hint{padding:16px 22px;border-radius:12px;border:1px dashed rgba(148,163,184,.35);background:rgba(2,6,23,.6);color:var(--text);backdrop-filter:blur(4px)}
   </style>
 </head>
 
@@ -218,14 +176,16 @@
         const uri = e.dataTransfer?.getData('text/uri-list') || e.dataTransfer?.getData('text/plain');
         if (uri) setModelSrc(uri.trim());
       });
-
-      // Console debug events
-      viewerEl.addEventListener('model-entity-clicked', (event) => {
-        console.log('entity-clicked:', { detail: event.detail });
-      });
-      const treeView = document.getElementById('tree-view-1');
-      if (treeView) treeView.addEventListener('tree-view-node-title-clicked', (event) => console.log('tree node:', event.detail));
     });
+  </script>
+
+  <script type="module">
+    import { XeoViewerService } from 'https://cdn.jsdelivr.net/npm/@xeokit/xeokit-webcomponents/dist/index.min.js';
+    const viewer = XeoViewerService.getInstance().getViewer('viewer-1');
+    const viewerComponent=document.getElementById('viewer-1'); viewerComponent.addEventListener('model-entity-clicked', e=>console.log('on model-entity-clicked:',{detail:e.detail}));
+    const xktModel=document.getElementById('model-1'); xktModel.addEventListener('model-loaded', e=>console.log('on model-loaded:',{detail:e.detail}));
+    const containmentTreeView=document.getElementById('tree-view-1'); containmentTreeView.addEventListener('tree-view-node-title-clicked', e=>{ const id=e?.detail?.treeViewNode?.objectId; let entity; try{entity=viewer.scene.objects[id]}catch{} const meta=entity?viewer.metaScene.metaObjects[entity.id]:undefined; console.log('on tree-view-node-title-clicked:',{detail:e.detail, entity, meta})});
+    viewer.scene.input.on('mouseclicked', coords=>{ const hit=viewer.scene.pick({canvasPos:coords}); if(hit&&hit.entity&&hit.entity.isObject){ const entity=hit.entity; const meta=viewer.metaScene.metaObjects[entity.id]; if(meta){ console.log('Custom Clicked entity:',{ id:entity.id, name:meta.name, type:meta.type, volume:entity.volume, aabb:entity.aabb }); } } });
   </script>
 </body>
 

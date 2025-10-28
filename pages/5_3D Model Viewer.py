@@ -31,7 +31,18 @@ except Exception:
 # Resolve model src from unified data dir
 sid = ensure_session_id(st.session_state)
 src = st.session_state.get("viewer_src_rel")  # like /static/temp_file/uploaded.ifc
-iframe_src = "/static/viewer/viewer.html" + (f"?src={src}" if src else "")
+
+# Force CDN to avoid missing local chunks
+use_cdn = 1
+
+# Compose iframe URL
+query = []
+if src:
+    query.append(f"src={src}")
+if use_cdn:
+    query.append("useCdn=1")
+q = ("?" + "&".join(query)) if query else ""
+iframe_src = f"/static/viewer/viewer.html{q}"
 
 # Full-width viewer (no right column)
 st.markdown(

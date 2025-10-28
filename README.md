@@ -48,7 +48,7 @@ python -m streamlit run Home.py
    - View tabular data and export to Excel or CSV.
 
 ## Process Overview
-Below is a high-level workflow of the application. Place the diagram image at `docs/process-diagram.png` in this repository so it renders on GitHub.
+Below is a high-level workflow of the application. Place the diagram image at `docs/process.png` in this repository so it renders on GitHub.
 
 ![Process Overview](docs/process-diagram.png)
 
@@ -62,6 +62,7 @@ Below is a high-level workflow of the application. Place the diagram image at `d
 7) Scheduling & Planning: Derive project timeline; export schedule to CSV/HTML.
 8) Cost Estimation: Export Bill of Quantities (CSV).
 9) Optional: Extract BIMQ/IFC configuration JSON.
+
 
 ---
 If you encounter issues, ensure dependencies are installed correctly and that your Python environment is active before running the app.
