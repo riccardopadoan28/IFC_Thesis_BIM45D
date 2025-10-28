@@ -73,7 +73,7 @@ def callback_upload():
 
 def main():
     st.title("📁 Upload IFC Model")
-    st.markdown("Upload your IFC model (max 200 MB). XKT conversion and the 3D view are available on page ‘5_3D Model Viewer’.")
+    st.markdown("Upload your IFC model (max 200 MB).")
 
     st.file_uploader(
         "Choose a file",
