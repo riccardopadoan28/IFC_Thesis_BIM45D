@@ -47,5 +47,21 @@ python -m streamlit run Home.py
 4) DataFrame Visualiser
    - View tabular data and export to Excel or CSV.
 
+## Process Overview
+Below is a high-level workflow of the application. Place the diagram image at `docs/process-diagram.png` in this repository so it renders on GitHub.
+
+![Process Overview](docs/process-diagram.png)
+
+### High-level Steps
+1) Home: Import an IFC file.
+2) Validate IFC: Apply IDS rules (automatic IDS test) and export IDS XML output.
+3) BCF Collaboration: Create issues and export review/issue reports.
+4) Model Health Checker: Run quality and consistency checks.
+5) 3D Model Viewer: Explore and inspect the model geometry.
+6) Model Properties & Quantities: Inspect properties/quantities; export DataFrame to CSV/Excel and HTML reports.
+7) Scheduling & Planning: Derive project timeline; export schedule to CSV/HTML.
+8) Cost Estimation: Export Bill of Quantities (CSV).
+9) Optional: Extract BIMQ/IFC configuration JSON.
+
 ---
 If you encounter issues, ensure dependencies are installed correctly and that your Python environment is active before running the app.

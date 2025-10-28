@@ -24,14 +24,15 @@ st.markdown("""
 ---
 ### 🔍 Main Capabilities
 
-1. IFC Export Configuration — prepare and export IFC4x3 settings.
-2. IDS Creator — author and export IDS rules (JSON / XML).
-3. IFC Import & Viewer — upload and inspect schema, entities and properties.
-4. Validation & Model Health — run IDS validations and automated health metrics.
-5. Property & Quantity (QTO / BOQ) — extract properties, map property sets and export take-offs.
-6. Scheduling (4D) — link elements to activities and create time-based sequences.
-7. Cost Estimation (5D) — apply unit rates to QTO/BOQ and generate cost breakdowns.
-8. Collaboration & Reporting — BCF-like exports, issue reporting and customizable PDF/HTML reports.
+1. IFC 4x3 Export Configuration — prepare and export IFC4x3 settings.
+2. IFC Import & Viewer — upload and inspect schema, entities and properties.
+3. IDS Creator — author and export IDS rules (JSON / XML).
+4. BCF  exports, issue reporting and customizable PDF/HTML reports.
+5. Validation & Model Health — run IDS validations and automated health metrics.
+6. 3D Viewer — visualize IFC models with xeokit WebComponents.
+7. Property & Quantity (QTO / BOQ) — extract properties, map property sets and export take-offs.
+8. Scheduling (4D) — link elements to activities and create time-based sequences.
+9. Cost Estimation (5D) — apply unit rates to QTO/BOQ and generate cost breakdowns.
 
 Additional features:
 
