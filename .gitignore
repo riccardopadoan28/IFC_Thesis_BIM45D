@@ -11,15 +11,8 @@ __pycache__/
 # Streamlit
 .streamlit/
 
-# Local temp artifacts
-/temp/
-/downloads/
-/temp_downloads/
-/temp-download/
-
-# Upload artifacts
-/static/uploads/
-/viewer/uploads/
+# Runtime artifacts (single unified folder)
+/static/temp_file/
 
 # Node
 node_modules/

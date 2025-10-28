@@ -3,7 +3,7 @@
 # ─────────────────────────────────────────────
 import streamlit as st
 import json
-import pandas as pd
+from tools.pathhelper import save_text
 from tools.ifc_432_dictionary import IFC_STRUCTURAL_DICTIONARY_4x3
 
 # -----------------------------
@@ -367,9 +367,12 @@ with tab_json:
     export_config["ExportRules"] = st.session_state.export_rules
     json_str = json.dumps(export_config, indent=4)
     st.code(json_str, language="json")
-    st.download_button(
-        label=f"Download JSON Configuration",
-        data=json_str,
-        file_name=f"{st.session_state.ifc_settings['Name'].replace(' ','_')}.json",
-        mime="application/json"
-    )
+
+    if st.button("Download configuration (save to temp_file)", key="btn_dl_export_config"):
+        try:
+            fname = f"export_config_{st.session_state.ifc_settings['Name'].replace(' ','_')}.json"
+            path, url = save_text(fname, json_str)
+            st.success(f"Saved in static/temp_file — {path.name}")
+            st.markdown(f"[Click to download]({url})")
+        except Exception as e:
+            st.error(f"Unable to save: {e}")

@@ -10,6 +10,7 @@ import zipfile
 import uuid
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
+from tools.pathhelper import save_text, save_bytes
 
 # ─────────────────────────────────────────────
 # 🧠 Alias per lo stato della sessione Streamlit
@@ -107,6 +108,13 @@ else:
 
         # Button: Full HTML report
         st.download_button("Download Full Report (HTML)", combined_html.encode('utf-8'), "report_full.html", "text/html")
+        if st.button("Save HTML to temp_file", key="btn_save_bcf_html"):
+            try:
+                path, url = save_text("report_full.html", combined_html)
+                st.success(f"Saved in static/temp_file — {path.name}")
+                st.markdown(f"[Click to download]({url})")
+            except Exception as e:
+                st.error(f"Unable to save: {e}")
 
         # Button: Export .bcfzip (minimal BCF archive)
         try:
@@ -163,6 +171,13 @@ else:
             zip_buffer.seek(0)
             bcfzip_bytes = zip_buffer.read()
             st.download_button("Export .bcfzip", bcfzip_bytes, "report_issues.bcfzip", "application/zip")
+            if st.button("Save .bcfzip to temp_file", key="btn_save_bcf_zip"):
+                try:
+                    path, url = save_bytes("report_issues.bcfzip", bcfzip_bytes)
+                    st.success(f"Saved in static/temp_file — {path.name}")
+                    st.markdown(f"[Click to download]({url})")
+                except Exception as e:
+                    st.error(f"Unable to save: {e}")
 
         except Exception as e:
             st.error(f"Error generating .bcfzip file: {e}")

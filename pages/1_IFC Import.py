@@ -5,6 +5,8 @@ import ifcopenshell as ifc
 import streamlit as st
 import time
 from pathlib import Path
+from tools.pathhelper import ensure_session_id, get_session_dir, get_session_public_base
+from tools.pathhelper import ensure_data_dir, public_url
 
 # Usa la cartella temporanea unificata se disponibile
 try:
@@ -36,32 +38,23 @@ def callback_upload():
         session["file_name"] = session["uploaded_file"].name
         session["is_file_uploaded"] = True
 
-        # Save to unified temp folder
+        # Save everything under static/temp_file
         try:
-            temp_dir = ensure_temp_dir() if ensure_temp_dir else (Path.cwd() / "temp")
-            temp_dir.mkdir(parents=True, exist_ok=True)
-            temp_path = temp_dir / "temp_model.ifc"
-            with open(temp_path, "wb") as f:
+            data_dir = ensure_data_dir()
+            original_name = session.get("uploaded_file").name or "uploaded.ifc"
+            ext = Path(original_name).suffix or ".ifc"
+            stored_path = data_dir / ("uploaded" + ext)
+            with open(stored_path, "wb") as f:
                 f.write(uploaded_data)
-            session["temp_ifc_path"] = str(temp_path)
-
-            # Save to static/uploads (served by Streamlit) and expose URL for viewer
-            project_root = Path(__file__).resolve().parent.parent
-            static_uploads = project_root / "static" / "uploads"
-            static_uploads.mkdir(parents=True, exist_ok=True)
-            uploaded_name = session.get("uploaded_file").name or "uploaded.ifc"
-            safe_name = "uploaded" + (Path(uploaded_name).suffix or ".ifc")
-            target_path = static_uploads / safe_name
-            with open(target_path, "wb") as vf:
-                vf.write(uploaded_data)
-            session["viewer_src_rel"] = f"/static/uploads/{safe_name}"
+            session["temp_ifc_path"] = str(stored_path)
+            session["viewer_src_rel"] = public_url(stored_path)
         except Exception as e:
-            st.error(f"⚠️ Failed to write temp IFC file: {e}")
+            st.error(f"⚠️ Failed to persist IFC: {e}")
             return
 
         # Load IFC file object into session
         try:
-            ifc_file = ifc.open(str(temp_path))
+            ifc_file = ifc.open(session["temp_ifc_path"])
             session["ifc_file"] = ifc_file
             session["ifc_schema"] = ifc_file.schema
         except Exception as e:

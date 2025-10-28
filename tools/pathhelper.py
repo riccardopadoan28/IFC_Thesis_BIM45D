@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import shutil
+import secrets
 from typing import List
 
 # Radice del repository (..\IFC_Thesis_BIM45D)
@@ -186,26 +187,124 @@ def remove_caches() -> dict:
     return {"removed_dirs": removed_dirs, "removed_files": removed_files}
 
 
+def prune_obsolete_dirs() -> dict:
+    """Remove folders no longer used now that static/temp_file is the single runtime dir."""
+    removed = []
+    obsolete = [
+        REPO_ROOT / "temp",
+        REPO_ROOT / "reports",
+        REPO_ROOT / "downloads",
+        REPO_ROOT / "temp_downloads",
+        REPO_ROOT / "temp-download",
+        REPO_ROOT / "static" / "uploads",
+        REPO_ROOT / "viewer" / "uploads",
+    ]
+    for d in obsolete:
+        try:
+            if d.exists():
+                shutil.rmtree(d, ignore_errors=True)
+                removed.append(str(d))
+        except Exception:
+            pass
+    return {"removed_obsolete_dirs": removed}
+
+
 def cleanup_all(remove_static_temp: bool = True, clean_caches: bool = True) -> dict:
-    """Full cleanup: ensure temp/, consolidate legacy, optionally remove static temp and caches."""
-    ensure_temp_dir()
+    """Full cleanup: ensure temp/, consolidate legacy, optionally remove static temp and caches.
+    Also prunes obsolete directories now that static/temp_file is in use.
+    """
+    ensure_data_dir()
     summary = consolidate_and_cleanup(remove_static_temp=remove_static_temp)
     cache_summary = {"removed_dirs": [], "removed_files": []}
     if clean_caches:
         cache_summary = remove_caches()
-    return {"consolidation": summary, "caches": cache_summary}
+    obsolete_summary = prune_obsolete_dirs()
+    return {"consolidation": summary, "caches": cache_summary, "obsolete": obsolete_summary}
+
+
+# Base for per-session storage (served by Streamlit)
+SESSION_BASE_DIR = Path(__file__).resolve().parent.parent / "static" / "sessions"
+
+def ensure_session_id(session_state) -> str:
+    sid = session_state.get("session_id")
+    if not sid:
+        sid = secrets.token_hex(8)
+        session_state["session_id"] = sid
+    return sid
+
+def get_session_dir(session_id: str) -> Path:
+    SESSION_BASE_DIR.mkdir(parents=True, exist_ok=True)
+    d = SESSION_BASE_DIR / session_id
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+def get_session_public_base(session_id: str) -> str:
+    return f"/static/sessions/{session_id}"
+
+def cleanup_session(session_id: str):
+    d = SESSION_BASE_DIR / session_id
+    if d.exists():
+        shutil.rmtree(d, ignore_errors=True)
+
+
+# ─────────────────────────────────────────────
+# Single unified data dir served by Streamlit: static/temp_file
+# Use this for ALL imports/exports across pages.
+# ─────────────────────────────────────────────
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = REPO_ROOT / "static" / "temp_file"
+
+def ensure_data_dir() -> Path:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return DATA_DIR
+
+def public_url(p: str | Path) -> str:
+    """Return browser URL for a file inside DATA_DIR."""
+    p = Path(p)
+    return f"/static/temp_file/{p.name}"
+
+def clear_data_dir() -> None:
+    d = ensure_data_dir()
+    for item in d.iterdir():
+        try:
+            if item.is_file() or item.is_symlink():
+                item.unlink()
+            elif item.is_dir():
+                shutil.rmtree(item, ignore_errors=True)
+        except Exception:
+            pass
+
+def save_bytes(filename: str, data: bytes) -> tuple[Path, str]:
+    """Save bytes to static/temp_file/filename and return (path, public_url)."""
+    d = ensure_data_dir()
+    safe = filename.replace("..", "_").replace("/", "_").replace("\\", "_")
+    path = d / safe
+    with open(path, "wb") as f:
+        f.write(data)
+    return path, public_url(path)
+
+def save_text(filename: str, text: str, encoding: str = "utf-8") -> tuple[Path, str]:
+    """Save text to static/temp_file/filename and return (path, public_url)."""
+    d = ensure_data_dir()
+    safe = filename.replace("..", "_").replace("/", "_").replace("\\", "_")
+    path = d / safe
+    path.write_text(text, encoding=encoding)
+    return path, public_url(path)
 
 
 if __name__ == "__main__":
-    # Lightweight CLI: python -m tools.pathhelper [--remove-static-temp] [--no-clean-caches]
+    # Lightweight CLI: python -m tools.pathhelper [--remove-static-temp] [--no-clean-caches] [--prune-obsolete]
     import argparse
     parser = argparse.ArgumentParser(description="Consolidate temp artifacts and remove legacy folders.")
     parser.add_argument("--remove-static-temp", action="store_true", help="Also delete static/temp_model.ifc if present")
     parser.add_argument("--no-clean-caches", action="store_true", help="Do not remove __pycache__ and *.pyc")
+    parser.add_argument("--prune-obsolete", action="store_true", help="Also remove obsolete folders (temp, reports, uploads, etc.)")
     args = parser.parse_args()
 
-    ensure_temp_dir()
+    ensure_data_dir()
     result = cleanup_all(remove_static_temp=args.remove_static_temp, clean_caches=not args.no_clean_caches)
+    if args.prune_obsolete:
+        result["obsolete"] = prune_obsolete_dirs()
 
     print("Cleanup summary:")
     print(f" - moved: {len(result['consolidation'].get('moved', []))}")
@@ -213,3 +312,4 @@ if __name__ == "__main__":
     print(f" - removed legacy files: {len(result['consolidation'].get('removed_files', []))}")
     print(f" - removed cache dirs: {len(result['caches'].get('removed_dirs', []))}")
     print(f" - removed cache files: {len(result['caches'].get('removed_files', []))}")
+    print(f" - removed obsolete dirs: {len(result.get('obsolete', {}).get('removed_obsolete_dirs', []))}")

@@ -13,6 +13,7 @@ from fpdf import FPDF  # report PDF (altra pagina)
 import textwrap  # formattazione testi per report PDF
 import re  # semplici controlli/normalizzazioni testuali
 from tools import ifchelper  # helper IFC condivisi
+from tools.pathhelper import save_text, save_bytes  # funzioni per salvare file temporanei
 # Import validate function from helper (moved to tools.ifchelper to centralize IFC logic)
 from tools.ifchelper import validate_ifc_with_ids  # validazione IFC rispetto alle regole IDS
 
@@ -278,6 +279,13 @@ with tab1:
 
         ids_json = json.dumps(session.ids_rules, indent=2)
         st.download_button("💾 Export IDS JSON", ids_json, "dynamic_ids.json", "application/json")
+        if st.button("Save IDS JSON to temp_file", key="btn_save_ids_json"):
+            try:
+                path, url = save_text("ids_rules.json", ids_json)
+                st.success(f"Saved in static/temp_file — {path.name}")
+                st.markdown(f"[Click to download]({url})")
+            except Exception as e:
+                st.error(f"Unable to save: {e}")
     else:
         st.info("👈 No IDS rules defined yet. Use the sidebar to add rules.")
 
@@ -328,6 +336,15 @@ with tab2:
                 color_continuous_scale="RdYlGn", title="Compliance per IFC Class (%)"
             )
             st.plotly_chart(fig, use_container_width=True)
+            # Optional explicit save to temp_file on user action
+            if st.button("Save results CSV to temp_file", key="btn_save_ids_results_csv"):
+                try:
+                    csv_bytes = df.to_csv(index=False).encode('utf-8')
+                    path, url = save_bytes("ids_validation_results.csv", csv_bytes)
+                    st.success(f"Saved in static/temp_file — {path.name}")
+                    st.markdown(f"[Click to download]({url})")
+                except Exception as e:
+                    st.error(f"Unable to save: {e}")
         else:
             st.info("⚠️ IDS rules defined, but no IFC data available.")
     else:
@@ -426,6 +443,13 @@ with tab3:
         pretty_xml = minidom.parseString(xml_bytes).toprettyxml(indent='  ')
         st.code(pretty_xml, language='xml')
         st.download_button("💾 Download IDS XML", pretty_xml, "ids_rules.xml", "application/xml")
+        if st.button("Save IDS XML to temp_file", key="btn_save_ids_xml"):
+            try:
+                path, url = save_text("ids_rules.xml", pretty_xml)
+                st.success(f"Saved in static/temp_file — {path.name}")
+                st.markdown(f"[Click to download]({url})")
+            except Exception as e:
+                st.error(f"Unable to save: {e}")
 
 # ─────────────────────────────────────────────
 # Tab 4: Automatic IDS Test
@@ -625,6 +649,13 @@ with tab_xml:
 
         csv_test = df_view.to_csv(index=False)
         st.download_button("💾 Download results CSV", csv_test, "ids_test_results.csv", "text/csv")
+        if st.button("Save test results CSV to temp_file", key="btn_save_ids_test_csv"):
+            try:
+                path, url = save_text("ids_test_results.csv", csv_test)
+                st.success(f"Saved in static/temp_file — {path.name}")
+                st.markdown(f"[Click to download]({url})")
+            except Exception as e:
+                st.error(f"Unable to save: {e}")
     else:
         st.info("Upload an IDS file (XML/JSON) and make sure an IFC file is loaded in Home to run the test.")
 

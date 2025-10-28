@@ -11,6 +11,7 @@ import base64
 import ifcopenshell as ifc
 import streamlit.components.v1 as components  # for inline HTML preview
 from tools import ifchelper, pandashelper, graph_maker
+from tools.pathhelper import save_text, save_bytes
 
 # Import helpers
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -200,6 +201,13 @@ def execute():
                     "full_dataframe.csv",
                     "text/csv"
                 )
+                if st.button("Save CSV to temp_file", key="btn_save_df_csv"):
+                    try:
+                        path, url = save_text("full_dataframe.csv", session["DataFrame"].to_csv(index=False))
+                        st.success(f"Saved in static/temp_file — {path.name}")
+                        st.markdown(f"[Click to download]({url})")
+                    except Exception as e:
+                        st.error(f"Unable to save: {e}")
             else:
                 st.warning("⚠️ No data available. Please load an IFC file first.")
 
@@ -561,17 +569,14 @@ def execute():
                 if st.button("Generate HTML Report"):
                     session['report_html_content'] = full_html
                     st.success("HTML report generated and ready to download.")
-
-                # Preview and Download HTML (available if html content present)
-                if session.get('report_html_content'):
-                    st.markdown("### HTML Preview")
-                    components.html(session['report_html_content'], height=900, scrolling=True)
-                    st.download_button(
-                        label="📥 Download HTML Report",
-                        data=session['report_html_content'].encode('utf-8'),
-                        file_name="report_distribution.html",
-                        mime="text/html"
-                    )
+                # Explicit save only on click
+                if session.get('report_html_content') and st.button("Save HTML report to temp_file", key="btn_save_props_report_html"):
+                    try:
+                        path, url = save_text("report_distribution.html", session['report_html_content'])
+                        st.success(f"Saved in static/temp_file — {path.name}")
+                        st.markdown(f"[Click to download]({url})")
+                    except Exception as e:
+                        st.error(f"Unable to save: {e}")
 
 
 # Avvio applicazione
