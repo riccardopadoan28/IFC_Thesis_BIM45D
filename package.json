@@ -1,4 +1,9 @@
 {
+  "name": "ifc-thesis-bim45d",
+  "version": "1.0.0",
+  "description": "OpenBIM platform to create, manage and export IFC4x3 data for BIM 4D/5D workflows",
+  "license": "MIT",
+  "author": "Riccardo Padoan",
   "dependencies": {}
 }
 
