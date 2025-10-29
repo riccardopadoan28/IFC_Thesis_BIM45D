@@ -2,8 +2,8 @@
 # 📦 Imports (standardized)
 # ─────────────────────────────────────────────
 import streamlit as st
-from tools import ifc_prop_qtt as ifc_props  # per-page helper (page 6)
 from tools import p_shared as shared  # shared model info helpers
+from tools import p6_prop_qtt as p6
 import pandas as pd
 import plotly.express as px
 from tools import pandashelper
@@ -24,68 +24,46 @@ session = st.session_state
 # ----------------------------------------------------
 # Inizializza le variabili necessarie nella sessione
 # ----------------------------------------------------
+
 def initialize_session_state():
-    session.setdefault("DataFrame", None)
+    session.setdefault("FullDataFrame", None)
     session.setdefault("Classes", [])
     session.setdefault("IsDataFrameLoaded", False)
 
 # ----------------------------------------------------
 # Carica i dati IFC in un DataFrame e aggiorna sessione
 # ----------------------------------------------------
+
 def load_data():
     if "ifc_file" not in session or session["ifc_file"] is None:
         st.warning("⚠️ Please upload an IFC file first.")
         return pandashelper.create_empty_dataframe()
 
     session["Classes"] = []
-    df = ifc_props.get_ifc_pandas(session.get("ifc_file"), session.get("ifc_schema", ""))
-    session["DataFrame"] = df
 
-    if isinstance(df, pd.DataFrame) and "Class" in df.columns:
-        session["Classes"] = df["Class"].value_counts().keys().tolist()
-    else:
-        session["Classes"] = []
-        st.info("Column 'Class' not found — continuing with Property Sets.")
+    # Unified long-form dataframe for Tab 1 (entities + Psets + Qtos + attributes)
+    try:
+        full_df = p6.get_ifc_full_dataframe(session.get("ifc_file"))
+    except Exception:
+        full_df = pd.DataFrame()
+    session["FullDataFrame"] = full_df
 
     session["IsDataFrameLoaded"] = True
-
-# ----------------------------------------------------
-# Carica i dati IFC in un DataFrame Quantities
-# ----------------------------------------------------
-def load_quantities():
-    session["Classes"] = []
-    ifc_file = session.get("ifc_file")
-    df = ifc_props.get_ifc_quantities(ifc_file)
-
-    session["QuantitiesFrame"] = df
-
-    if isinstance(df, pd.DataFrame) and "Class" in df.columns:
-        session["Classes"] = df["Class"].value_counts().keys().tolist()
-    else:
-        session["Classes"] = []
-        st.info("Column 'Class' not found in Quantities DataFrame.")
-
-    session["IsQuantitiesLoaded"] = True
 
 # ----------------------------------------------------
 # Funzioni di download del DataFrame
 # ----------------------------------------------------
 
 def download_csv():
-    """Return CSV bytes using helper implementation in tools.ifc_prop_qtt."""
-    model = session.get('ifc_file')
-    df = session.get('DataFrame')
-    csv_bytes = None
+    """Return CSV bytes for the unified FullDataFrame."""
+    df = session.get('FullDataFrame')
     try:
-        csv_bytes = ifc_props.export_ifc_as_csv_bytes(model=model, df=df)
+        if df is not None and not df.empty:
+            return df.to_csv(index=False).encode('utf-8')
     except Exception:
-        csv_bytes = None
-
-    if csv_bytes:
-        return csv_bytes
-    else:
-        st.error('Unable to generate CSV (see logs).')
-        return None
+        pass
+    st.error('Unable to generate CSV (see logs).')
+    return None
 
 
 def download_excel():
@@ -125,19 +103,21 @@ def execute():
         with tab1:
             st.subheader("DataFrame Review")
 
-            if "DataFrame" in session and session["DataFrame"] is not None and not session["DataFrame"].empty:
-                # 🔹 Visualizzazione dinamica
-                st.dataframe(session["DataFrame"], use_container_width=True)
-                # 🔹 Pulsante download CSV (Excel export removed)
+            # Use unified long-form DF only
+            base_df = session.get("FullDataFrame")
+
+            if base_df is not None and not base_df.empty:
+                st.dataframe(base_df, use_container_width=True)
+
                 st.download_button(
                     "Download CSV",
-                    session["DataFrame"].to_csv(index=False).encode("utf-8"),
+                    base_df.to_csv(index=False).encode("utf-8"),
                     "full_dataframe.csv",
                     "text/csv"
                 )
                 if st.button("Save CSV to temp_file", key="btn_save_df_csv"):
                     try:
-                        path, url = save_text("full_dataframe.csv", session["DataFrame"].to_csv(index=False))
+                        path, url = save_text("full_dataframe.csv", base_df.to_csv(index=False))
                         st.success(f"Saved in static/temp_file — {path.name}")
                         st.markdown(f"[Click to download]({url})")
                     except Exception as e:
@@ -150,108 +130,106 @@ def execute():
         # TAB 2 - Analisi proprietà + Grafico
         # ----------------------------------------
         with tab2:
-            if "DataFrame" in session and session["DataFrame"] is not None and not session["DataFrame"].empty:
-                df = session["DataFrame"]
-
+            # Prefer unified long-form DF (Psets) for property analysis
+            df_full = session.get("FullDataFrame")
+            if df_full is not None and not df_full.empty:
+                base_df = df_full[df_full.get('Source') == 'Pset'].copy()
                 st.subheader("Properties Analysis")
 
-                # 🔹 Filtri con opzione "All"
+                # Filters with "All" option
                 col1, col2, col3 = st.columns(3)
-
-                # Order: Level -> Class -> Type
                 with col1:
-                    level_options = ["All"] + (sorted(df["Level"].dropna().unique().tolist()) if "Level" in df else [])
+                    level_options = ["All"] + (sorted(base_df["Level"].dropna().unique().tolist()) if "Level" in base_df else [])
                     level_filter = st.selectbox("Filter by Level", level_options, key="props_level_filter")
                 with col2:
-                    class_options = ["All"] + (sorted(df["Class"].dropna().unique().tolist()) if "Class" in df else [])
+                    class_options = ["All"] + (sorted(base_df["Class"].dropna().unique().tolist()) if "Class" in base_df else [])
                     class_filter = st.selectbox("Filter by Class", class_options, key="props_class_filter")
                 with col3:
-                    # Type options depend on selected class when not All
-                    if class_filter != "All" and "Class" in df:
-                        type_opts = sorted(df[df["Class"] == class_filter]["Type"].dropna().unique().tolist())
+                    if class_filter != "All" and "Class" in base_df:
+                        type_opts = sorted(base_df[base_df["Class"] == class_filter]["Type"].dropna().unique().tolist()) if "Type" in base_df else []
                     else:
-                        type_opts = sorted(df["Type"].dropna().unique().tolist()) if "Type" in df else []
+                        type_opts = sorted(base_df["Type"].dropna().unique().tolist()) if "Type" in base_df else []
                     type_options = ["All"] + type_opts
                     type_filter = st.selectbox("Filter by Type", type_options, key="props_type_filter")
 
-                # 🔹 Applica filtri solo se diverso da "All" (apply Level, then Class, then Type)
-                df_filtered = df.copy()
-                if level_filter != "All":
-                    df_filtered = df_filtered[df_filtered["Level"] == level_filter]
-                if class_filter != "All":
-                    df_filtered = df_filtered[df_filtered["Class"] == class_filter]
-                if type_filter != "All":
-                    df_filtered = df_filtered[df_filtered["Type"] == type_filter]
+                # Build Pset options from the selected Class only (ignore Level/Type to show all Psets for that class)
+                class_df = base_df if class_filter == "All" else base_df[base_df["Class"] == class_filter]
 
-                # Dopo i filtri, dentro tab2
-                if df_filtered.empty:
-                    st.warning("⚠️ No data available with the selected filters.")
+                if class_df.empty:
+                    st.warning("⚠️ No data available for the selected class.")
                 else:
-                    # 🔹 Scelta della proprietà da analizzare
-                    # If a specific class is selected, limit properties to columns present for that class
-                    if class_filter != "All" and "Class" in df:
-                        prop_options = sorted(df[df["Class"] == class_filter].columns.tolist())
+                    pset_options = sorted(class_df["SetName"].dropna().unique().tolist()) if "SetName" in class_df else []
+                    if not pset_options:
+                        st.info("No Property Sets available for the selected class.")
                     else:
-                        prop_options = sorted(df_filtered.columns.tolist())
+                        selected_pset = st.selectbox("Select Property Set", pset_options, key="props_pset_select")
+                        df_pset_all = class_df[class_df["SetName"] == selected_pset]
 
-                    if not prop_options:
-                        st.info("No properties available for the selected class/filters.")
-                    else:
-                        property_name = st.selectbox("Select property", prop_options, key="props_property_select")
+                        # Property names within the selected Pset (across the whole class)
+                        prop_options = sorted(df_pset_all["AttributeName"].dropna().unique().tolist()) if "AttributeName" in df_pset_all else []
+                        if not prop_options:
+                            st.info("No properties available in the selected Property Set.")
+                        else:
+                            property_name = st.selectbox("Select property", prop_options, key="props_property_select_pset")
 
-                        if property_name:
-                            # Conta frequenze
-                            df_report = df_filtered[property_name].value_counts(dropna=False).reset_index()
-                            df_report.columns = [property_name, "Count"]
+                            # Start from full class+pset selection, then apply Level/Type filters for the analysis
+                            df_prop = df_pset_all[df_pset_all["AttributeName"] == property_name]
+                            df_prop_filtered = df_prop.copy()
+                            if level_filter != "All" and "Level" in df_prop_filtered:
+                                df_prop_filtered = df_prop_filtered[df_prop_filtered["Level"] == level_filter]
+                            if type_filter != "All" and "Type" in df_prop_filtered:
+                                df_prop_filtered = df_prop_filtered[df_prop_filtered["Type"] == type_filter]
 
-                            st.markdown("Class distribution")
-                            st.dataframe(df_report, use_container_width=True)
-
-                            # 🔹 Pulisci il dataframe filtrato
-                            df_display = df_filtered.copy()
-
-                            # Rimuovi colonne completamente vuote
-                            df_display = df_display.dropna(axis=1, how="all")
-
-                            # Seleziona solo colonne di tipo stringa o booleane
-                            df_display = df_display.select_dtypes(include=["object", "bool"])
-
-                            # Se resta qualcosa da mostrare
-                            if not df_display.empty:
-                                st.markdown("Filtered data")
-                                st.dataframe(df_display, use_container_width=True)
+                            if df_prop_filtered.empty:
+                                st.warning("⚠️ No data available with the selected filters.")
                             else:
-                                st.info("ℹ️ No descriptive properties available for the selected filters.")
+                                # Frequency distribution of values
+                                df_report = df_prop_filtered["Value"].value_counts(dropna=False).reset_index()
+                                df_report.columns = ["Value", "Count"]
 
-                            # 🔹 Grafico interattivo (includibile nel report)
-                            fig = px.bar(
-                                df_report,
-                                x=property_name,
-                                y="Count",
-                                title=f"Distribution of {property_name}",
-                                text="Count"
-                            )
-                            fig.update_traces(marker_color=session.get('color1', '#00FFAA'), textposition="outside")
-                            st.plotly_chart(fig, use_container_width=True)
+                                st.markdown("Class distribution")
+                                st.dataframe(df_report, use_container_width=True)
 
-                            # Unico bottone: aggiunge al report la tabella visualizzata + il grafico
-                            add_key = f"add_filtered_table_{level_filter}_{class_filter}_{type_filter}_{property_name}".replace(" ", "_").replace("/", "_")
-                            if st.button("Add current table and chart to report", key=add_key):
-                                session.setdefault('report_components', [])
-                                session['report_components'].append({
-                                    'type': 'property',
-                                    'level': level_filter,
-                                    'class': class_filter,
-                                    'type_filter': type_filter,
-                                    'property': property_name,
-                                    'data': df_display.copy(),
-                                    'fig': fig
-                                })
-                                st.success("Added current table and chart to report components.")
+                                # Display filtered rows (compact informative columns)
+                                show_cols = [c for c in [
+                                    "GlobalId", "Class", "Name", "Level", "Type", "SetName", "AttributeName", "Value"
+                                ] if c in df_prop_filtered.columns]
+                                df_display = df_prop_filtered[show_cols] if show_cols else df_prop_filtered.copy()
 
-                            # Rimuove i vecchi salvataggi non utilizzati per evitare confusione
-                            session.pop("report_data", None)
-                            session.pop("report_fig", None)
+                                if not df_display.empty:
+                                    st.markdown("Filtered data")
+                                    st.dataframe(df_display, use_container_width=True)
+                                else:
+                                    st.info("ℹ️ No descriptive properties available for the selected filters.")
+
+                                # Bar chart
+                                fig = px.bar(
+                                    df_report,
+                                    x="Value",
+                                    y="Count",
+                                    title=f"Distribution of {selected_pset} • {property_name}",
+                                    text="Count"
+                                )
+                                fig.update_traces(marker_color=session.get('color1', '#00FFAA'), textposition="outside")
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                # Add current table and chart to report
+                                add_key = f"add_filtered_table_{level_filter}_{class_filter}_{type_filter}_{selected_pset}_{property_name}".replace(" ", "_").replace("/", "_")
+                                if st.button("Add current table and chart to report", key=add_key):
+                                    session.setdefault('report_components', [])
+                                    session['report_components'].append({
+                                        'type': 'property',
+                                        'level': level_filter,
+                                        'class': class_filter,
+                                        'type_filter': type_filter,
+                                        'property': f"{selected_pset}:{property_name}",
+                                        'data': df_display.copy(),
+                                        'fig': fig
+                                    })
+                                    st.success("Added current table and chart to report components.")
+
+                                session.pop("report_data", None)
+                                session.pop("report_fig", None)
             else:
                 st.warning("⚠️ No data available. Please load an IFC file first.")
 
@@ -259,14 +237,14 @@ def execute():
         # TAB 3 - Quantities Review
         # ----------------------------------------
         with tab3:
-            st.subheader("📐 Quantities Analysis")
+            st.subheader("Quantities Analysis")
 
             try:
                 if "ifc_file" not in session or session["ifc_file"] is None:
                     st.warning("⚠️ No IFC file loaded yet.")
                 else:
                     # Carica le quantità dal modello IFC
-                    qto_df = ifc_props.get_ifc_quantities(session["ifc_file"])
+                    qto_df = p6.get_ifc_quantities(session["ifc_file"])
 
                     if qto_df.empty:
                         st.warning("⚠️ Quantities DataFrame is empty.")

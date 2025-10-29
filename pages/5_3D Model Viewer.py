@@ -6,6 +6,8 @@ import streamlit as st
 from tools import p5_viewer
 from tools.pathhelper import ensure_session_id
 from tools import p_shared as shared  # shared model info helpers
+import subprocess
+import time
 
 # ─────────────────────────────────────────────
 # 🧠 Session alias
@@ -14,7 +16,7 @@ session = st.session_state
 
 st.set_page_config(page_title="Viewer", layout="wide")
 # Header and short description
-st.header("🔎 Model Viewer")
+st.header("🔎 3D Model Viewer (IFC → XKT with Xeokit)")
 st.markdown(
     """
     Automated model viewer with IFC4x3 support. Upload an IFC on the IFC Import page and it will load here automatically.
@@ -24,19 +26,50 @@ st.markdown(
     "Reference: [Building 3D Model Viewers with xeokit-webcomponents](https://xeokit.io/blog/building-3d-model-viewers-with-xeokit-webcomponents/)"
 )
 
-# Ensure viewer folder is mirrored under /static
-project_root = Path(__file__).resolve().parent.parent
-viewer_static_dir = p5_viewer.ensure_viewer_static(project_root)
 
-# Resolve model src from unified data dir
-sid = ensure_session_id(st.session_state)
-src = st.session_state.get("viewer_src_rel")  # like /static/temp_file/uploaded.ifc
-iframe_src = p5_viewer.compose_iframe_src(src)
+ifc_path = Path("static/temp_file/uploaded.ifc")
+xkt_path = Path("static/models/uploaded.xkt")
+viewer_path = Path("viewer/viewer.html")
 
-# Full-width viewer (no right column)
-st.markdown(
-    f'<iframe src="{iframe_src}" style="width:100%;height:80vh;border:0;" scrolling="no" allow="fullscreen"></iframe>',
-    unsafe_allow_html=True,
-)
+# 1️⃣ Controllo esistenza file IFC
+if not ifc_path.exists():
+    st.warning("⚠️ No IFC file found at `static/temp_file/uploaded.ifc`.")
+    st.stop()
 
-# Uniform page structure applied. If you still have direct ifcopenshell logic here, consider moving it into the corresponding tools module (p0..p8) for consistency.
+# 2️⃣ Bottone per conversione
+if st.button("Convert IFC → XKT"):
+    st.write("⏳ Converting... (this may take a few seconds)")
+    try:
+        # Ensure output directory exists
+        xkt_path.parent.mkdir(parents=True, exist_ok=True)
+        # Run converter
+        subprocess.run([
+            "xeokit-convert",
+            str(ifc_path),
+            str(xkt_path)
+        ], check=True)
+        st.success("✅ Conversion completed! File created: `static/models/uploaded.xkt`")
+    except FileNotFoundError:
+        st.error("❌ 'xeokit-convert' not found. Make sure it is installed and on PATH.")
+        st.stop()
+    except Exception as e:
+        st.error(f"❌ Conversion error: {e}")
+        st.stop()
+
+# 3️⃣ Mostra il viewer
+if xkt_path.exists():
+    st.markdown("---")
+    st.subheader("3D Model Viewer")
+
+    # Leggi il file HTML del viewer
+    with open(viewer_path, "r", encoding="utf-8") as f:
+        html_code = f.read()
+
+    # Cache-bust the model URL to avoid stale loads
+    ts = int(time.time())
+    html_code = html_code.replace("/static/models/uploaded.xkt", f"/static/models/uploaded.xkt?ts={ts}")
+
+    # Inserisci direttamente il viewer nella pagina
+    st.components.v1.html(html_code, height=800)
+else:
+    st.info("ℹ️ Please convert the IFC file first to view it.")

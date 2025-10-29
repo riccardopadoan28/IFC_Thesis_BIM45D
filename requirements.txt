@@ -5,3 +5,5 @@ pandas
 numpy
 plotly
 fpdf2
+
+npm install -g @xeokit/xeokit-convert
