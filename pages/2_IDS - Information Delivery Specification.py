@@ -25,113 +25,64 @@ session = st.session_state
 # ─────────────────────────────────────────────
 # 📚 Funzioni di supporto
 # ─────────────────────────────────────────────
-def validate_ifc_with_ids(ifc_file, ids_rules):
-    """
-    Valida un modello IFC rispetto alle regole IDS usando l'API ufficiale ifcopenshell.
-    Restituisce un DataFrame Pandas con:
-    ElementID, ElementName, IFCClass, PropertySet, PropertyName, Value, Compliant
-    """
-    import ifcopenshell
-    from ifcopenshell.util import element as ifc_element
+# Replace custom validator with parser for official validate CLI output
 
-    results = []
-
-    # Accept either an opened model or a file path
+def _parse_validate_stdout_to_df(stdout: str) -> pd.DataFrame:
     try:
-        model = ifc_file if hasattr(ifc_file, "by_type") else ifcopenshell.open(ifc_file)
+        data = json.loads(stdout)
     except Exception:
-        # fallback: if opening fails, try treating as already-opened model
-        model = ifc_file
+        return pd.DataFrame([{"Raw": stdout}])
 
-    for rule in ids_rules:
-        class_name = rule.get("ifc_class")
-        if not class_name:
-            continue
+    rows = []
 
-        try:
-            elements = model.by_type(class_name) or []
-        except Exception:
-            elements = []
+    def walk(obj):
+        if isinstance(obj, dict):
+            row = {}
+            for k in ("guid", "GlobalId", "globalId", "id"):
+                if k in obj and isinstance(obj[k], str):
+                    row["ElementID"] = obj[k]
+                    break
+            for k in ("ifc_class", "ifcClass", "class", "entity"):
+                if k in obj and isinstance(obj[k], str):
+                    row["IFCClass"] = obj[k]
+                    break
+            for k in ("specification", "spec", "name"):
+                if k in obj and isinstance(obj[k], str):
+                    row["Specification"] = obj[k]
+                    break
+            for k in ("requirement", "property", "rule", "description"):
+                if k in obj and isinstance(obj[k], str):
+                    row["Requirement"] = obj[k]
+                    break
+            for k in ("conforms", "result", "status", "valid", "conformant"):
+                if k in obj:
+                    v = obj[k]
+                    row["Compliant"] = bool(v) if isinstance(v, bool) else str(v).lower() in ("true", "pass", "passed", "ok", "conformant")
+                    break
+            if row:
+                rows.append(row)
+            for v in obj.values():
+                walk(v)
+        elif isinstance(obj, list):
+            for it in obj:
+                walk(it)
 
-        if not elements:
-            continue  # nessun oggetto di questa classe
+    walk(data)
 
-        for obj in elements:
-            # get property sets using official util
-            try:
-                psets = ifc_element.get_psets(obj) or {}
-            except Exception:
-                psets = {}
+    if rows:
+        df = pd.DataFrame(rows)
+        for col in ["ElementID", "IFCClass", "Specification", "Requirement", "Compliant"]:
+            if col not in df.columns:
+                df[col] = None
+        # Order columns
+        ordered = ["ElementID", "IFCClass", "Specification", "Requirement", "Compliant"]
+        others = [c for c in df.columns if c not in ordered]
+        return df[ordered + others]
 
-            for prop_rule in rule.get("properties", []):
-                pset_name = prop_rule.get("property_set", "")
-                prop_name = prop_rule.get("property_name", "")
-                mandatory = prop_rule.get("mandatory", False)
-
-                val = None
-
-                if pset_name:
-                    # look for the specified property set
-                    pset_props = psets.get(pset_name)
-                    if pset_props is not None:
-                        if prop_name == "ALL":
-                            val = pset_props
-                        else:
-                            val = pset_props.get(prop_name)
-                    else:
-                        # try case-insensitive match for PSet name
-                        for pn, props in psets.items():
-                            if pn.lower() == pset_name.lower():
-                                if prop_name == "ALL":
-                                    val = props
-                                else:
-                                    val = props.get(prop_name)
-                                pset_name = pn
-                                break
-                else:
-                    # no property set specified: search across all PSets
-                    for pn, props in psets.items():
-                        if prop_name == "ALL":
-                            val = props
-                            pset_name = pn
-                            break
-                        if prop_name in props:
-                            val = props.get(prop_name)
-                            pset_name = pn
-                            break
-
-                # final fallback: try direct attribute on the IFC entity
-                if val is None and prop_name and hasattr(obj, prop_name):
-                    try:
-                        val = getattr(obj, prop_name)
-                    except Exception:
-                        val = None
-
-                is_valid = (val is not None) if mandatory else True
-
-                # try to get a stable element identifier
-                element_id = None
-                if hasattr(obj, "GlobalId"):
-                    element_id = getattr(obj, "GlobalId", None)
-                elif hasattr(obj, "GlobalID"):
-                    element_id = getattr(obj, "GlobalID", None)
-                else:
-                    try:
-                        element_id = obj.id()
-                    except Exception:
-                        element_id = None
-
-                results.append({
-                    "ElementID": element_id,
-                    "ElementName": getattr(obj, "Name", None) or "(Unnamed)",
-                    "IFCClass": class_name,
-                    "PropertySet": pset_name,
-                    "PropertyName": prop_name,
-                    "Value": val,
-                    "Compliant": is_valid
-                })
-
-    return pd.DataFrame(results)
+    # Fallback: show raw data
+    if isinstance(data, list):
+        return pd.DataFrame(data)
+    return pd.DataFrame([data])
 
 # ─────────────────────────────────────────────
 # ⚙️ Pagina IDS
@@ -280,69 +231,76 @@ with tab1:
         st.info("👈 No IDS rules defined yet. Use the sidebar to add rules.")
 
 # ─────────────────────────────────────────────
-# Tab 2: IDS Validation Results
+# Tab 2: IDS Validation Results — use IDS-Audit + official validate CLI
 # ─────────────────────────────────────────────
 with tab2:
-    st.markdown("This tab runs IDS validation on the loaded IFC model. Validation results are saved and can be exported from the 'BCF / Reports' tab as CSV, HTML, PDF or a minimal BCF ZIP.")
+    st.markdown("This tab runs IDS validation on the loaded IFC model using the official validator. The generated IDS XML is first audited with IDS-Audit.")
     if ifc_model and session.ids_rules:
-        df = validate_ifc_with_ids(ifc_model, session.ids_rules)
-        # salva l'ultimo risultato di validazione in sessione per l'esportazione
-        session.ids_last_validation_df = df
-        if not df.empty and "Compliant" in df.columns:
-            st.subheader("✅ IDS Validation Table")
-            st.dataframe(df, use_container_width=True)
+        # Generate IDS XML from current rules
+        ids_xml_str = p2.ids_rules_to_xml(session.ids_rules)
+        ids_xml_bytes = ids_xml_str.encode('utf-8')
 
-            # Quick textual summary per IFC class
-            st.markdown("### Summary")
-            for class_name, group in df.groupby("IFCClass"):
-                total = len(group)
-                passed = int(group["Compliant"].sum())
-                st.markdown(f"**{class_name}** — 🗹 {passed}/{total} passed the requirement.")
-
-                # Missing properties (Compliant == False and Value is None)
-                missing_df = group[(~group["Compliant"]) & (group["Value"].isnull())]
-                if not missing_df.empty:
-                    miss_counts = missing_df.groupby("PropertyName").size().reset_index(name="count")
-                    for _, row_m in miss_counts.iterrows():
-                        pname = row_m['PropertyName'] or '(Unnamed)'
-                        st.markdown(f"🗷 {row_m['count']}/{total} {class_name} don't have a *{pname}* property.")
-
-                # Invalid values (Compliant == False but Value present)
-                invalid_df = group[(~group["Compliant"]) & (~group["Value"].isnull())]
-                if not invalid_df.empty:
-                    inval_counts = invalid_df.groupby(["PropertyName", "Value"]).size().reset_index(name="count")
-                    for _, row_i in inval_counts.iterrows():
-                        pname = row_i['PropertyName'] or '(Unnamed)'
-                        val = str(row_i['Value'])
-                        st.markdown(f"🗷 {row_i['count']}/{total} {class_name} have *{pname}* value '{val}' which is not allowed.")
-
-            compliance_rate = df["Compliant"].mean() * 100
-            st.metric("Compliance Rate", f"{compliance_rate:.1f}%")
-
-            chart = df.groupby("IFCClass")["Compliant"].mean().reset_index()
-            chart["Compliant"] = chart["Compliant"] * 100
-            fig = px.bar(
-                chart, x="IFCClass", y="Compliant", color="Compliant",
-                color_continuous_scale="RdYlGn", title="Compliance per IFC Class (%)"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            # Optional explicit save to temp_file on user action
-            if st.button("Save results CSV to temp_file", key="btn_save_ids_results_csv"):
-                try:
-                    csv_bytes = df.to_csv(index=False).encode('utf-8')
-                    path, url = save_bytes("ids_validation_results.csv", csv_bytes)
-                    st.success(f"Saved in static/temp_file — {path.name}")
-                    st.markdown(f"[Click to download]({url})")
-                except Exception as e:
-                    st.error(f"Unable to save: {e}")
+        # Audit IDS XML
+        ok_audit, audit_report = p2.audit_ids_xml(ids_xml_bytes)
+        if ok_audit:
+            st.success("IDS-Audit passed for generated IDS XML.")
         else:
-            st.info("⚠️ IDS rules defined, but no IFC data available.")
+            st.error("IDS-Audit reported issues for the generated IDS XML.")
+            with st.expander("Audit report"):
+                st.code(audit_report or "", language="json")
+
+        # Run official validation only if audit passed
+        if ok_audit:
+            res = p2.validate_ifc_with_ids_xml_official(ifc_model, ids_xml_bytes)
+            if res.get("ok") and res.get("stdout"):
+                df = _parse_validate_stdout_to_df(res["stdout"]) 
+                session.ids_last_validation_df = df
+                if not df.empty and ("Compliant" in df.columns):
+                    st.subheader("✅ IDS Validation Table (official)")
+                    st.dataframe(df, use_container_width=True)
+
+                    # Summary
+                    st.markdown("### Summary")
+                    if "IFCClass" in df.columns:
+                        for class_name, group in df.groupby("IFCClass"):
+                            total = len(group)
+                            passed = int(group.get("Compliant", pd.Series([False]*total)).sum()) if "Compliant" in group.columns else 0
+                            st.markdown(f"**{class_name}** — 🗹 {passed}/{total} passed the requirement.")
+
+                    if "Compliant" in df.columns:
+                        compliance_rate = df["Compliant"].mean() * 100
+                        st.metric("Compliance Rate", f"{compliance_rate:.1f}%")
+
+                        chart = df.groupby("IFCClass")["Compliant"].mean().reset_index() if "IFCClass" in df.columns else pd.DataFrame()
+                        if not chart.empty:
+                            chart["Compliant"] = chart["Compliant"] * 100
+                            fig = px.bar(
+                                chart, x="IFCClass", y="Compliant", color="Compliant",
+                                color_continuous_scale="RdYlGn", title="Compliance per IFC Class (%)"
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+
+                    # Save CSV
+                    if st.button("Save results CSV to temp_file", key="btn_save_ids_results_csv"):
+                        try:
+                            csv_bytes = df.to_csv(index=False).encode('utf-8')
+                            path, url = save_bytes("ids_validation_results.csv", csv_bytes)
+                            st.success(f"Saved in static/temp_file — {path.name}")
+                            st.markdown(f"[Click to download]({url})")
+                        except Exception as e:
+                            st.error(f"Unable to save: {e}")
+            else:
+                st.error("Official validator failed. Ensure the 'validate' CLI is installed and on PATH.")
+                if res.get("error"):
+                    st.code(res.get("error"), language="bash")
+                if res.get("stdout"):
+                    st.code(res.get("stdout"), language="json")
     else:
         st.info("👈 Define at least one IDS rule and load an IFC file in Home.")
 
 
 # ─────────────────────────────────────────────
-# Tab 3: XML Output
+# Tab 3: XML Output — show IDS-Audit status
 # ─────────────────────────────────────────────
 with tab3:
     st.subheader("🗎 IDS XML Output")
@@ -431,6 +389,16 @@ with tab3:
         # Pretty print and output
         xml_bytes = ET.tostring(root, encoding='utf-8')
         pretty_xml = minidom.parseString(xml_bytes).toprettyxml(indent='  ')
+
+        # Audit result
+        ok_audit_xml, audit_report_xml = p2.audit_ids_xml(xml_bytes)
+        if ok_audit_xml:
+            st.success("IDS-Audit passed for current XML.")
+        else:
+            st.warning("IDS-Audit found issues for current XML. See report below.")
+            with st.expander("Audit report"):
+                st.code(audit_report_xml or "", language="json")
+
         st.code(pretty_xml, language='xml')
         st.download_button("💾 Download IDS XML", pretty_xml, "ids_rules.xml", "application/xml")
         if st.button("Save IDS XML to temp_file", key="btn_save_ids_xml"):
@@ -442,7 +410,7 @@ with tab3:
                 st.error(f"Unable to save: {e}")
 
 # ─────────────────────────────────────────────
-# Tab 4: Automatic IDS Test
+# Tab 4: Automatic IDS Test — audit uploaded IDS and use official validate
 # ─────────────────────────────────────────────
 with tab_xml:
     st.markdown("This tab lets you automatically test an IFC file against IDS rules loaded from a file.")
@@ -466,6 +434,7 @@ with tab_xml:
         key="upload_ids"
     )
 
+    ids_xml_bytes = None
     test_ids = None
     if uploaded_ids is not None:
         try:
@@ -479,7 +448,8 @@ with tab_xml:
                 parsed_xml = None
 
             if parsed_xml is not None:
-                # Parse IDS XML into internal format
+                # We have IDS XML: keep bytes and show quick summary
+                ids_xml_bytes = content
                 ns = {
                     'ids': 'http://standards.buildingsmart.org/IDS',
                     'xs': 'http://www.w3.org/2001/XMLSchema'
@@ -545,10 +515,10 @@ with tab_xml:
                     preview = ", ".join(classes[:8]) + ("…" if len(classes) > 8 else "")
                     st.success(f"✅ IDS XML loaded: {n_specs} specifications, {n_props} properties. Classes: {preview}")
                 else:
-                    st.error("❌ No valid 'specification' found in the uploaded IDS XML.")
+                    st.warning("No 'specification' found in the uploaded IDS XML.")
 
             else:
-                # Not XML: try as JSON
+                # Not XML: try as JSON → normalize to rules then to IDS XML
                 uploaded_ids.seek(0)
                 loaded_json = json.load(uploaded_ids)
 
@@ -591,61 +561,83 @@ with tab_xml:
                     preview = ", ".join(classes[:8]) + ("…" if len(classes) > 8 else "")
                     st.success(f"✅ IDS JSON loaded: {n_specs} specifications, {n_props} properties. Classes: {preview}")
 
+                # Convert to IDS XML
+                ids_xml_str = p2.ids_rules_to_xml(test_ids or [])
+                ids_xml_bytes = ids_xml_str.encode('utf-8')
+
+            # Audit any IDS XML we have
+            if ids_xml_bytes:
+                ok_audit_u, audit_report_u = p2.audit_ids_xml(ids_xml_bytes)
+                if ok_audit_u:
+                    st.success("IDS-Audit passed for uploaded/normalized IDS.")
+                else:
+                    st.error("IDS-Audit reported issues for the uploaded/normalized IDS.")
+                    with st.expander("Audit report"):
+                        st.code(audit_report_u or "", language="json")
+
         except Exception as e:
             st.error(f"❌ Error reading the uploaded file: {e}")
             test_ids = None
+            ids_xml_bytes = None
 
-    # Run validation and show clearer outputs
-    if ifc_model and test_ids:
-        df_test = validate_ifc_with_ids(ifc_model, test_ids)
-        session.ids_last_validation_df = df_test
+    # Run validation and show outputs via official CLI
+    if ifc_model and ids_xml_bytes:
+        res_test = p2.validate_ifc_with_ids_xml_official(ifc_model, ids_xml_bytes)
+        if res_test.get("ok") and res_test.get("stdout"):
+            df_test = _parse_validate_stdout_to_df(res_test["stdout"]) 
+            session.ids_last_validation_df = df_test
 
-        # Sort: non-compliant first, then by class/pset/property
-        try:
-            df_view = df_test.sort_values(["Compliant", "IFCClass", "PropertySet", "PropertyName"])  # False < True
-        except Exception:
-            df_view = df_test
-
-        st.subheader("✅ IDS test results")
-        st.dataframe(df_view, use_container_width=True)
-
-        total = len(df_view)
-        fails = int((~df_view["Compliant"]).sum()) if "Compliant" in df_view.columns else 0
-        passes = total - fails
-        missing = int((df_view["Value"].isnull() & (~df_view["Compliant"])).sum()) if "Value" in df_view.columns and "Compliant" in df_view.columns else 0
-        invalid = fails - missing
-
-        st.markdown(
-            f"- Total checks: **{total}**\n"
-            f"- Compliant: **{passes}**\n"
-            f"- Non-compliant: **{fails}** (missing: {missing}, disallowed values: {invalid})"
-        )
-
-        compliance_rate_test = df_view["Compliant"].mean() * 100 if "Compliant" in df_view.columns else 0.0
-        st.metric("Compliance rate", f"{compliance_rate_test:.1f}%")
-
-        chart_test = df_view.groupby("IFCClass")["Compliant"].mean().reset_index() if "Compliant" in df_view.columns else pd.DataFrame()
-        if not chart_test.empty:
-            chart_test["Compliant"] = chart_test["Compliant"] * 100
-            fig_test = px.bar(
-                chart_test,
-                x="IFCClass",
-                y="Compliant",
-                color="Compliant",
-                color_continuous_scale="RdYlGn",
-                title="Compliance by IFC class (%)"
-            )
-            st.plotly_chart(fig_test, use_container_width=True)
-
-        csv_test = df_view.to_csv(index=False)
-        st.download_button("💾 Download results CSV", csv_test, "ids_test_results.csv", "text/csv")
-        if st.button("Save test results CSV to temp_file", key="btn_save_ids_test_csv"):
             try:
-                path, url = save_text("ids_test_results.csv", csv_test)
-                st.success(f"Saved in static/temp_file — {path.name}")
-                st.markdown(f"[Click to download]({url})")
-            except Exception as e:
-                st.error(f"Unable to save: {e}")
+                if "Compliant" in df_test.columns:
+                    df_view = df_test.sort_values(["Compliant", "IFCClass"])  # False < True
+                else:
+                    df_view = df_test
+            except Exception:
+                df_view = df_test
+
+            st.subheader("✅ IDS test results (official)")
+            st.dataframe(df_view, use_container_width=True)
+
+            total = len(df_view)
+            if total > 0 and "Compliant" in df_view.columns:
+                fails = int((~df_view["Compliant"]).sum())
+                passes = total - fails
+                st.markdown(
+                    f"- Total checks: **{total}**\n"
+                    f"- Compliant: **{passes}**\n"
+                    f"- Non-compliant: **{fails}**"
+                )
+                compliance_rate_test = df_view["Compliant"].mean() * 100
+                st.metric("Compliance rate", f"{compliance_rate_test:.1f}%")
+
+                if "IFCClass" in df_view.columns:
+                    chart_test = df_view.groupby("IFCClass")["Compliant"].mean().reset_index()
+                    chart_test["Compliant"] = chart_test["Compliant"] * 100
+                    fig_test = px.bar(
+                        chart_test,
+                        x="IFCClass",
+                        y="Compliant",
+                        color="Compliant",
+                        color_continuous_scale="RdYlGn",
+                        title="Compliance by IFC class (%)"
+                    )
+                    st.plotly_chart(fig_test, use_container_width=True)
+
+            csv_test = df_view.to_csv(index=False)
+            st.download_button("💾 Download results CSV", csv_test, "ids_test_results.csv", "text/csv")
+            if st.button("Save test results CSV to temp_file", key="btn_save_ids_test_csv"):
+                try:
+                    path, url = save_text("ids_test_results.csv", csv_test)
+                    st.success(f"Saved in static/temp_file — {path.name}")
+                    st.markdown(f"[Click to download]({url})")
+                except Exception as e:
+                    st.error(f"Unable to save: {e}")
+        else:
+            st.error("Official validator failed. Ensure the 'validate' CLI is installed and on PATH.")
+            if res_test.get("error"):
+                st.code(res_test.get("error"), language="bash")
+            if res_test.get("stdout"):
+                st.code(res_test.get("stdout"), language="json")
     else:
         st.info("Upload an IDS file (XML/JSON) and make sure an IFC file is loaded in Home to run the test.")
 
