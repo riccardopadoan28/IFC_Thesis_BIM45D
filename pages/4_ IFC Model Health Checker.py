@@ -204,7 +204,7 @@ def execute():
     if "isHealthDataLoaded" not in session:
         initialize_session_state()
 
-    tab1, = st.tabs(["📈 Charts"])
+    tab1, tab2 = st.tabs(["📈 Charts", "✅ IFC Validation"])
     # ============================================
     # TAB 1: Charts
     # ============================================
@@ -230,6 +230,81 @@ def execute():
 
         if session.get("isHealthDataLoaded"):
             draw_content()
+        else:
+            st.info("📂 To begin, load an IFC file from the Home page.")
+
+    # ============================================
+    # TAB 2: IFC Validation
+    # ============================================
+    with tab2:
+        st.markdown("""
+        ### Official IFC Validation Checks
+        
+        Run official buildingSMART validation checks on your IFC model:
+        - **Syntax Check**: Validates IFC file structure and syntax
+        - **Schema Check**: Validates against IFC schema rules
+        - **Gherkin Rules Check**: Validates against business rules
+        
+        Reference: [buildingSMART/validate](https://github.com/buildingSMART/validate)
+        """)
+        
+        if "ifc_file" in session:
+            if st.button("🔍 Run Validation Checks", type="primary"):
+                with st.spinner("Running validation checks..."):
+                    results = p4.run_health_checks(session["ifc_file"])
+                    
+                    if "error" in results:
+                        st.error(f"❌ {results['error']}")
+                    elif results:
+                        overall = results.get("overall", {})
+                        
+                        # Overall status
+                        if overall.get("ok"):
+                            st.success(f"✅ {overall.get('message', 'All validations passed')}")
+                        else:
+                            st.error(f"❌ {overall.get('message', 'Validation found issues')}")
+                        
+                        # Detailed results
+                        st.markdown("#### Detailed Results")
+                        
+                        # Syntax validation
+                        syntax = results.get("syntax", {})
+                        if syntax.get("ok"):
+                            st.success(f"✅ Syntax Check: Passed")
+                        else:
+                            st.error(f"❌ Syntax Check: Failed")
+                            with st.expander("Syntax Errors"):
+                                for err in syntax.get("errors", []):
+                                    st.code(err)
+                        
+                        # Schema validation
+                        schema = results.get("schema", {})
+                        if schema.get("ok"):
+                            st.success(f"✅ Schema Check: Passed")
+                        else:
+                            st.error(f"❌ Schema Check: Failed")
+                            with st.expander("Schema Errors"):
+                                for err in schema.get("errors", []):
+                                    st.code(err)
+                        
+                        # Gherkin rules
+                        gherkin = results.get("gherkin", {})
+                        if gherkin.get("ok"):
+                            st.success(f"✅ Gherkin Rules Check: Passed")
+                        else:
+                            st.error(f"❌ Gherkin Rules Check: Failed")
+                            with st.expander("Gherkin Rule Errors"):
+                                for err in gherkin.get("errors", []):
+                                    st.code(err)
+                        
+                        # Download results
+                        json_bytes = p4.build_health_report(results)
+                        st.download_button(
+                            "💾 Download Validation Report (JSON)",
+                            json_bytes,
+                            "ifc_validation_report.json",
+                            "application/json"
+                        )
         else:
             st.info("📂 To begin, load an IFC file from the Home page.")
 

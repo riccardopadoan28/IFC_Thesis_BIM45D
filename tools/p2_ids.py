@@ -24,22 +24,6 @@ import ifcopenshell
 import pandas as pd
 from ifcopenshell.util import element as ifc_element
 
-# Try to import official validator Python API
-try:
-    from ifc_ids_validate import validate as official_validate_fn
-    OFFICIAL_VALIDATOR_AVAILABLE = True
-except ImportError:
-    OFFICIAL_VALIDATOR_AVAILABLE = False
-    official_validate_fn = None
-
-# Try to import IDS audit tool Python API
-try:
-    from ids_audit_tool import audit_ids as audit_ids_fn
-    IDS_AUDIT_AVAILABLE = True
-except ImportError:
-    IDS_AUDIT_AVAILABLE = False
-    audit_ids_fn = None
-
 
 # ------------------------------
 # Utility: genera un IDS XML minimo da regole semplificate
@@ -101,37 +85,7 @@ def ids_rules_to_xml(ids_rules: List[Dict[str, Any]], title: str = "Dynamic IDS"
 # ------------------------------
 def audit_ids_xml(xml_bytes: bytes) -> Tuple[bool, str]:
     """Valida un IDS XML. Ritorna (ok, report_text)."""
-    # 1) Try Python API first (if available)
-    if IDS_AUDIT_AVAILABLE and audit_ids_fn:
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".ids") as f:
-                f.write(xml_bytes)
-                f.flush()
-                temp_ids = f.name
-            try:
-                report = audit_ids_fn(temp_ids)
-                # Convert report to string if it's a dict/list
-                if isinstance(report, dict):
-                    if report.get('errors') or report.get('error'):
-                        return False, json.dumps(report, indent=2)
-                    return True, json.dumps(report, indent=2)
-                elif isinstance(report, list):
-                    if report:  # non-empty list might mean issues
-                        return False, json.dumps(report, indent=2)
-                    return True, "No issues found."
-                else:
-                    report_str = str(report)
-                    return True, report_str if report_str else "Audit passed."
-            finally:
-                try:
-                    os.unlink(temp_ids)
-                except Exception:
-                    pass
-        except Exception as e:
-            # Fallback if Python API fails
-            pass
-    
-    # 2) Try CLI as fallback
+    # 1) Try IDS-Audit CLI tool (buildingSMART official .NET tool)
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".ids") as f:
             f.write(xml_bytes)
@@ -158,7 +112,7 @@ def audit_ids_xml(xml_bytes: bytes) -> Tuple[bool, str]:
         # errore inaspettato nel CLI
         return False, f"IDS-Audit-tool error: {e}"
 
-    # 2) fallback: XSD validation
+    # 2) Fallback: XSD validation
     try:
         import xmlschema
         schema = xmlschema.XMLSchema("http://standards.buildingsmart.org/IDS/1.0/ids.xsd")
@@ -218,7 +172,15 @@ def _run_validate_cli(ids_path: str, ifc_path: str) -> Tuple[bool, Optional[str]
 
 
 def validate_ifc_with_ids_xml_official(ifc_file: Any, ids_xml_bytes: bytes, use_python_api: bool = True) -> Dict[str, Any]:
-    """Esegue la validazione ufficiale via Python API (se disponibile) o CLI. Ritorna un dict con keys: ok, stdout, error."""
+    """Esegue la validazione IFC vs IDS XML. NOTA: Non esiste un validator IDS ufficiale come package Python separato.
+    buildingSMART/validate è un servizio web Django, non un validator IDS programmatico.
+    Ritorna un dict con keys: ok, stdout, error.
+    """
+    # NOTE: There is no official Python API for IDS validation.
+    # buildingSMART/validate is a Django web service for IFC validation (not IDS).
+    # buildingSMART/IDS-Audit-tool is a .NET CLI for auditing IDS XML structure.
+    # We use the existing custom validator as fallback.
+    
     ids_tmp = None
     ifc_tmp = None
     try:
@@ -228,23 +190,7 @@ def validate_ifc_with_ids_xml_official(ifc_file: Any, ids_xml_bytes: bytes, use_
             ids_tmp = f.name
         ifc_tmp = _ensure_ifc_path(ifc_file)
         
-        # Try Python API first (if available and requested)
-        if use_python_api and OFFICIAL_VALIDATOR_AVAILABLE and official_validate_fn:
-            try:
-                results = official_validate_fn(ifc_tmp, ids_tmp)
-                # Convert results to JSON string for consistency with CLI output
-                if isinstance(results, list):
-                    output = json.dumps(results, indent=2, default=str)
-                elif isinstance(results, dict):
-                    output = json.dumps(results, indent=2, default=str)
-                else:
-                    output = json.dumps({"results": str(results)}, indent=2)
-                return {"ok": True, "stdout": output, "error": None, "method": "python_api"}
-            except Exception as e:
-                # If Python API fails, fall back to CLI
-                pass
-        
-        # Fallback to CLI
+        # Try CLI validate tool (though this may not be IDS-specific)
         ok, out, err = _run_validate_cli(ids_tmp, ifc_tmp)
         return {"ok": ok, "stdout": out, "error": err, "method": "cli"}
     finally:

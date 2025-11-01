@@ -53,6 +53,7 @@ def callback_upload():
             session["ifc_schema"] = ifc_file.schema
         except Exception as e:
             st.error(f"⚠️ Failed to load IFC file: {e}")
+            # This basic syntax check already validates IFC structure
 
 # ─────────────────────────────────────────────
 # 🚀 Funzione principale Streamlit

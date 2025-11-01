@@ -97,22 +97,13 @@ st.markdown(
 # Reference to buildingSMART IDS
 st.markdown("Reference: [buildingSMART - Information Delivery Specification (IDS)](https://www.buildingsmart.org/standards/bsi-standards/information-delivery-specification-ids/)")
 
-# Show availability status of official tools
-if hasattr(p2, 'OFFICIAL_VALIDATOR_AVAILABLE') and hasattr(p2, 'IDS_AUDIT_AVAILABLE'):
-    if p2.OFFICIAL_VALIDATOR_AVAILABLE and p2.IDS_AUDIT_AVAILABLE:
-        st.success("✅ Official buildingSMART validation tools are available and will be used automatically.")
-    else:
-        missing = []
-        if not p2.OFFICIAL_VALIDATOR_AVAILABLE:
-            missing.append("[buildingSMART/validate](https://github.com/buildingSMART/validate)")
-        if not p2.IDS_AUDIT_AVAILABLE:
-            missing.append("[IDS-Audit-tool](https://github.com/buildingSMART/IDS-Audit-tool)")
-        st.warning(
-            f"⚠️ Official tools not installed: {', '.join(missing)}. "
-            f"The app will fall back to CLI or custom validation. "
-            f"Install these tools for the best experience: "
-            f"`pip install git+https://github.com/buildingSMART/validate.git git+https://github.com/buildingSMART/IDS-Audit-tool.git`"
-        )
+# Note about validation tools
+st.info(
+    "ℹ️ **Validation Tools**: "
+    "IDS-Audit CLI (if installed) validates your IDS XML structure. "
+    "[buildingSMART/IDS-Audit-tool](https://github.com/buildingSMART/IDS-Audit-tool) is a .NET tool. "
+    "The app uses custom IFC+IDS validation logic with proper fallbacks."
+)
 
 # ─────────────────────────────────────────────
 # ✅ Inizializza IDS rules in sessione
@@ -268,9 +259,7 @@ with tab2:
 
         # Run official validation only if audit passed
         if ok_audit:
-            # Add option to use custom validator as fallback
-            use_official = st.checkbox("Use official buildingSMART validator (recommended)", value=True, key="use_official_validator_tab2")
-            res = p2.validate_ifc_with_ids_xml_official(ifc_model, ids_xml_bytes, use_python_api=use_official)
+            res = p2.validate_ifc_with_ids_xml_official(ifc_model, ids_xml_bytes)
             if res.get("ok") and res.get("stdout"):
                 df = _parse_validate_stdout_to_df(res["stdout"]) 
                 session.ids_last_validation_df = df
@@ -601,9 +590,7 @@ with tab_xml:
 
     # Run validation and show outputs via official CLI
     if ifc_model and ids_xml_bytes:
-        # Add option to use official validator
-        use_official_test = st.checkbox("Use official buildingSMART validator (recommended)", value=True, key="use_official_validator_tab4")
-        res_test = p2.validate_ifc_with_ids_xml_official(ifc_model, ids_xml_bytes, use_python_api=use_official_test)
+        res_test = p2.validate_ifc_with_ids_xml_official(ifc_model, ids_xml_bytes)
         if res_test.get("ok") and res_test.get("stdout"):
             df_test = _parse_validate_stdout_to_df(res_test["stdout"]) 
             session.ids_last_validation_df = df_test
